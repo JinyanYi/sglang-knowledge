@@ -19,6 +19,7 @@
 |------|------|
 | [Prefill vs Decode](./prefill-decode.md) | LLM 推理的两个阶段：计算特性差异、Arithmetic Intensity、PD 分离 |
 | [CUDA Graphs](./cuda-graphs.md) | CUDA Graph、Piecewise CUDA Graph 详解，以及 SGLang 实现分析 |
+| [显存预算与 Prefill 调度](./memory-budget-and-scheduling.md) | mem-fraction-static、KV 池 profiling、PrefillAdder、Static/Dynamic 分布与实测 case |
 
 ### 模型推理
 
@@ -46,6 +47,7 @@
 - Arithmetic Intensity 与 Roofline 模型
 - CUDA Graph 与 Piecewise CUDA Graph
 - PD 分离架构
+- 显存预算（mem-fraction-static、KV 池、PrefillAdder）
 
 ### 模型推理
 - Temperature 采样参数
