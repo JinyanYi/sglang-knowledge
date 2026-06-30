@@ -67,7 +67,7 @@ python3 -m sglang.launch_server \
 
 **结论**：排除了 cuda graph 和 MTP 的影响，但依然不知道问题在哪。
 
-这个时候需要去GPU上测一下精度以拿到一个baseline。如果GPU精度也不对，就是框架的问题，Otherwise那就是NPU部分的实现问题。
+这个时候需要去GPU上测一下精度以拿到一个baseline。如果GPU精度也不对，就是框架的问题；否则就是NPU部分的实现问题。
 
 ## 2. 获取 GPU baseline：确认是 NPU 特有问题
 
@@ -101,7 +101,7 @@ GPU上测完，64条 精度0.87， 符合官方精度，排除了框架问题。
 
 ## 3. 发现突破口：第一个 Token 就不同
 
-> **温度参数（temperature）是什么？** temperature 控制模型输出的随机性。temperature=0 时，模型每次都选概率最大的 token，输出完全固定（greedy decoding）；temperature>0 时，输出有随机性，多次运行结果不同。调成 0 方便对比，因为两边都确定性输出，只要输出不同就一定是计算出了问题。（此处再加入链接 to temperature 那个文档
+> **温度参数（temperature）是什么？** temperature 控制模型输出的随机性。temperature=0 时，模型每次都选概率最大的 token，输出完全固定（greedy decoding）；temperature>0 时，输出有随机性，多次运行结果不同。调成 0 方便对比，因为两边都确定性输出，只要输出不同就一定是计算出了问题。
 
 找到一道"复现率 100%"的题目，将 temperature 设为 0，固定输出：
 
@@ -269,17 +269,14 @@ HunyuanV3-Preview 的配置（`config.json` 关键字段）：
 - NPU 需要 tp=16（模型太大，8 张 NPU 装不下）
 - GPU 跑的是 tp=8
 
-TP（Tensor Parallelism，张量并行）会把权重矩阵切分到多张卡上。每张卡只持有全部权重的 1/tp。这样的结果是：
+TP（Tensor Parallelism，张量并行）会把权重矩阵切分到多张卡上。每张卡只持有全部权重的一部分，具体的切分粒度由 `moe_tp_size`（MoE 模块内部使用的 TP 大小，受 EP 配置影响）决定，不一定等于启动参数里的 `--tp-size`。
 
-- NPU tp=16：每个 expert 的 gate_up 权重形状 = `[384/16 * 2, 4096]` = `[48, 4096]` per rank（实际由 MoE 并行策略决定，但总之比 GPU 少一半）
-- GPU tp=8：每个 expert 的 gate_up 权重形状 = `[384/8 * 2, 4096]` = `[96, 4096]` per rank
+实际打印出来的 shared_mlp 的 gate_up 权重可以直接验证这一点：
 
-实际打印出来的 shared MLP 权重验证了这一点：
+- NPU `--tp-size 16`：`[DBG FFN_W_GATE_UP] L001 shape=[192, 4096]`（每卡 192 行）
+- GPU `--tp-size 8`：`[DBG FFN_W_GATE_UP] L001 shape=[384, 4096]`（每卡 384 行）
 
-- NPU tp=16：`[DBG FFN_W_GATE_UP] L001 shape=[192, 4096]`（每卡持有 192 个输出特征）
-- GPU tp=8：`[DBG FFN_W_GATE_UP] L001 shape=[384, 4096]`（每卡持有 384 个输出特征）
-
-两边的 `x` 的 shape 也不一样（input 也被切分了），所以没法直接把 NPU 的中间值和 GPU 的对比——**形状就不匹配**。
+输入 `x` 同样被切分，形状也不一致。所以没法直接把 NPU 的中间激活值和 GPU 的对比——**形状就不匹配，无法逐元素比较**。
 
 **这就卡住了**。需要想个办法让两边跑在相同的 TP size 下。
 
@@ -320,7 +317,7 @@ TP（Tensor Parallelism，张量并行）会把权重矩阵切分到多张卡上
 | **topk_weights**             | **路由权重**      | **4.97** | **14.03** | **−65% ✗** |
 
 
-**结论更进一步**：expert 内部的所有矩阵乘法（gmm1、gmm2）和激活函数（swiglu）全部正确。唯一有问题的是 `**topk_weights`**（路由权重）——NPU 算出来的权重只有 GPU 的 35%！
+**结论更进一步**：expert 内部的所有矩阵乘法（gmm1、gmm2）和激活函数（swiglu）全部正确。唯一有问题的是 **`topk_weights`**（路由权重）——NPU 算出来的权重只有 GPU 的 35%！
 
 ---
 
