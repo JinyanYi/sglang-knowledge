@@ -52,11 +52,27 @@ flowchart TB
 
 ## 2. 启动时 KV 池怎么定（Concrete Example）
 
-调用链：`init_torch_distributed()` 测 `pre` → `load_model()` → `_resolve_memory_pool_config(pre)` → `_init_pools()`。
+调用链（[`scheduler.py#L862`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/scheduler.py#L862) — `init_model_worker()`）：
+
+```
+init_model_worker()                    # scheduler
+  ├─ init_tp_model_worker()            # 加载主模型权重，记录加载前空闲
+  ├─ maybe_init_draft_worker()         # 加载 draft 模型权重
+  └─ init_memory_pools()              # 协调所有 worker 分配内存池
+       └─ tp_worker.alloc_memory_pool()
+            └─ model_runner.alloc_memory_pool()
+                 └─ _resolve_memory_pool_config()   # 测量加载后空闲，算 KV 预算
+                      └─ _init_pools()              # 实际分配 KV + Mamba 池
+```
+
+> **关键**：`_profile_available_bytes()` 在 `alloc_memory_pool()` 内调用，此时主模型和 draft 模型均已加载完毕，`available_gpu_memory` 反映两者共同占用后的剩余显存，比仅加载主模型后少约 1.84 GB（draft 权重占用）。
 
 ### 2.1 公式与源码
 
 ```
+# pre = 加载任何权重前的可用显存（init_torch_distributed 末尾测量）
+# post = 主模型+draft 模型全部加载后的可用显存（alloc_memory_pool 时测量）
+
 reserve_gb   = pre × (1 − mem_fraction_static)     ← 动态预留空位，不 malloc
 rest_gb      = post − reserve_gb
 rest_gb      −= Mamba 投机中间态（若开投机）
@@ -66,9 +82,9 @@ KV tokens    = (available_bytes // cell_size) 按 page 对齐
 final tokens = min(KV tokens, max_total_tokens)    ← 若设置了 cap
 ```
 
-#### ① 测 `pre`（加载模型前）
+#### ① 测 `pre`（加载任何模型前）
 
-`model_runner.py` — `init_torch_distributed()` 末尾：
+[`model_runner.py#L1282`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner.py#L1282) — `init_torch_distributed()` 末尾：
 
 ```python
 pre_model_load_memory = get_available_gpu_memory(
@@ -80,33 +96,32 @@ pre_model_load_memory = get_available_gpu_memory(
 return pre_model_load_memory
 ```
 
-#### ② 动态预留 + `rest`（加载模型后）
+#### ② 动态预留 + `rest`（主模型 + draft 模型均加载完之后）
 
-`model_runner_kv_cache_mixin.py` — `_profile_available_bytes()`：
+[`model_runner_kv_cache_mixin.py#L85`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L85) — `_profile_available_bytes()`：
 
 ```python
-post_model_load_memory = get_available_gpu_memory(
+# 此时主模型和 draft 模型均已加载，available_gpu_memory 比仅加载主模型时更小
+available_gpu_memory = get_available_gpu_memory(
     self.device,
     self.gpu_id,
     distributed=get_world_group().world_size > 1,
     cpu_group=get_world_group().cpu_group,
 )
 
-pre_non_static_gb = pre_model_load_memory * (
+rest_memory = available_gpu_memory - pre_model_load_memory * (
     1 - self.mem_fraction_static
 )
-rest_memory = post_model_load_memory - pre_non_static_gb
 
 if self.mambaish_config is not None:
     rest_memory = self.handle_max_mamba_cache(rest_memory)
 
-available_bytes = int(rest_memory * (1 << 30))
-return available_bytes
+return int(rest_memory * (1 << 30))
 ```
 
 #### ③ Mamba 投机中间态（从 `rest` 里扣预算）
 
-`model_runner_kv_cache_mixin.py` — `handle_max_mamba_cache()`，开投机时：
+[`model_runner_kv_cache_mixin.py#L138`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L138) — `handle_max_mamba_cache()`，显式指定 `max_mamba_cache_size` 且开投机时：
 
 ```python
 if has_spec_dec:
@@ -121,25 +136,25 @@ if has_spec_dec:
         * capped_reqs
         * server_args.speculative_num_draft_tokens
     )
-    intermediate_gb = intermediate_size / (1 << 30)
-    total_rest_memory = total_rest_memory - intermediate_gb
+    total_rest_memory = total_rest_memory - (intermediate_size / (1 << 30))
 ```
 
 #### ④ Mamba 主池（继续从 `rest` 里扣预算）
 
+[`model_runner_kv_cache_mixin.py#L219`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L219)：
+
 ```python
-mamba_state_bytes = (
+mamba_state_memory = (
     server_args.max_mamba_cache_size
     * config.mamba2_cache_params.mamba_cache_per_req
+    / (1 << 30)
 )
-mamba_state_memory = mamba_state_bytes / (1 << 30)
-rest_out_gb = total_rest_memory - mamba_state_memory
-return rest_out_gb
+return total_rest_memory - mamba_state_memory
 ```
 
 #### ⑤ `rest` → KV token 数
 
-`pool_configurator.py` — `DefaultPoolConfigurator.calculate_pool_sizes()`：
+[`pool_configurator.py#L222`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/pool_configurator.py#L222) — `DefaultPoolConfigurator.calculate_pool_sizes()`：
 
 ```python
 def calculate_pool_sizes(
@@ -150,18 +165,17 @@ def calculate_pool_sizes(
     return MemoryPoolConfig(max_total_num_tokens=max_total_num_tokens)
 ```
 
-入口在 `_resolve_memory_pool_config()`：
+入口在 [`_resolve_memory_pool_config()`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L1051)：
 
 ```python
 available_bytes = self._profile_available_bytes(pre_model_load_memory)
 configurator = create_memory_pool_configurator(self)
-cell_size = configurator._cell_size
 config = configurator.calculate_pool_sizes(available_bytes, page_size)
 ```
 
-#### ⑥ `max_total_tokens` 上限（--max_total_tokens）
+#### ⑥ `max_total_tokens` 上限（--max-total-tokens）
 
-`model_runner_kv_cache_mixin.py` — `_apply_token_constraints()`：
+[`model_runner_kv_cache_mixin.py#L952`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L952) — `_apply_token_constraints()`：
 
 ```python
 user_limit = self.server_args.max_total_tokens
@@ -177,7 +191,7 @@ if user_limit is not None:
 return token_capacity
 ```
 
-`_resolve_memory_pool_config()` 里调用：
+[`_resolve_memory_pool_config()`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L1063) 里调用：
 
 ```python
 constrained = self._apply_token_constraints(config.max_total_num_tokens)
@@ -185,110 +199,105 @@ if constrained != config.max_total_num_tokens:
     config = configurator.calculate_pool_sizes_from_max_tokens(
         constrained, page_size
     )
-final_max_tokens = config.max_total_num_tokens
 ```
 
 **注意**：`min(cap, profiled)` 只能**缩小**池子；cap 大于 profiled 时打 warning，仍用 profiled 值。
 
-### 2.2 实测数字：别把 fraction 混用
+### 2.2 实测数字（Qwen3.6-35B-A3B，TP=2，NPU）
 
-MemProfile 里 **⑦ = ④ − ⑤ − ⑥**（源码注释），**KV 池大小 = ⑦**，不是「21−10 剩下的 11」。
+**⑦ = ④ − ⑤ − ⑥**，**KV 池大小由 ⑦ 决定**，不是「加载后空闲减 Mamba 剩下的 free」。
 
-#### 关键：④ 里已经减过 ③
+#### 关键：加载后空闲已含 draft 权重
 
 ```
-post ≈ 27.78 GB     ← 权重 load 完后的空闲（不是整卡 60G）
-③  = pre × (1−f)   ← 只在算 KV 预算时从 post 上减掉，不是再占一块物理显存
-④  = post − ③      ← ③ 只在这里出现一次
-⑦  = ④ − ⑤ − ⑥   ← 全部给 KV 预算
-⑧  = ⑦ 换成 bytes ÷ cell_size
+加载后空闲 ≈ 26.09 GB   ← 主模型 + MTP draft 均加载完后的空闲（不是整卡 60G）
+③ = 加载前空闲 × (1−f)  ← 只在算 KV 预算时从②扣掉，不是再占一块物理显存
+④ = 加载后空闲 − ③      ← ③ 只在这里出现一次
+⑦ = ④ − ⑤ − ⑥         ← 全部给 KV 预算
+⑧ = ⑦ 换成 bytes ÷ cell_size
 ```
 
-**不存在**「27 减 6 得 21，再减 10 得 11，再减 6 得 5.7」这种链；**5.7 就是 ④−⑤−⑥ 的结果**。
-
-#### Case A：MemProfile 实测（fraction = **0.8**）
-
-这条日志对应 **593024 tokens / KV 5.66 GB**：
+#### Case A：实测（fraction = **0.8**）→ 479488 tokens
 
 | 步骤 | 计算 | 数值 |
 |------|------|------|
-| ① pre | | **60.80 GB** |
-| ② post | | **27.78 GB** |
-| ③ 预留 | 60.80 × (1−0.8) | **12.16 GB** |
-| ④ rest | 27.78 − 12.16 | **15.62 GB** |
-| ⑤ Mamba 中间态 | | **7.97 GB** |
-| ⑥ Mamba 主池 | | **1.99 GB** |
-| **⑦ rest_for_kv** | 15.62 − 7.97 − 1.99 | **≈ 5.66 GB** |
-| ⑧ KV 池 | 593024 × 10240 | **≈ 5.66 GB** |
+| ① 加载前空闲 | | **60.77 GB** |
+| ② 两模型加载后空闲 | | **26.09 GB** |
+| ③ 动态预留 | 60.77 × (1−0.8) | **12.15 GB** |
+| ④ 预算起点 | 26.09 − 12.15 | **13.94 GB** |
+| ⑤ Mamba 中间态 | | **7.55 GB** |
+| ⑥ Mamba 主池 | | **1.97 GB** |
+| **⑦ KV 可用预算** | 13.94 − 7.55 − 1.97 | **≈ 4.42 GB** |
+| ⑧ KV 池 | 479488 tokens × 10240 | **≈ 4.57 GB** |
 
-验算：`15.62 − 7.97 − 1.99 = 5.56`（与 5.66 一致，四舍五入误差）。
+（⑦ 与 ⑧ 的微小差异来自 mamba_cache_per_req 内部精度取整。）
 
-#### Case B：若 fraction = **0.9**（同一 pre/post，只改 fraction）
+#### Case B：若 fraction = **0.9**（同一机器，只改 fraction）
 
 | 步骤 | 计算 | 数值 |
 |------|------|------|
-| ③ 预留 | 60.80 × 0.1 | **6.08 GB** |
-| ④ rest | 27.78 − 6.08 | **21.70 GB** |
-| ⑤⑥ Mamba | 同左 | **7.97 + 1.99 = 9.96 GB** |
-| **⑦ rest_for_kv** | 21.70 − 9.96 | **≈ 11.74 GB** |
-| ⑧ KV 池（估） | 11.74×2³⁰÷10240 | **≈ 1.22M tokens** |
+| ③ 动态预留 | 60.77 × (1-0.9) | **6.08 GB** |
+| ④ 预算起点 | 26.09 − 6.08 | **20.01 GB** |
+| ⑤⑥ Mamba | 同左 | **7.55 + 1.97 = 9.52 GB** |
+| **⑦ KV 可用预算** | 20.01 − 9.52 | **≈ 10.49 GB** |
+| ⑧ KV 池（估） | 10.49×2³⁰÷10240 | **≈ 1.10M tokens** |
 
-所以：**0.9 时 KV 预算应是 ~11.7G，不是 5.7G**。之前文档把 0.9 的 pre/post 和 0.8 跑出的 5.66G KV 写在一起，容易误解。
+0.9 时 KV 预算 ~10.5G，约是 0.8 时的 **2.4 倍**。
 
-#### ⑩ avail_after_kv_pool ≈ 11G 是什么？
+#### ⑩ 池分配后剩余 free ≈ 11G 是什么？
 
-这是 **KV + Mamba 真分配完之后** 的物理空闲，**不是** ⑦ 的 5.66G，也 **不是** ④−⑤−⑥ 再减一次：
+这是 **KV + Mamba 真分配完之后** 的物理空闲，**不是** ⑦：
 
 ```
-② post（空闲）           27.78 GB
-  − Mamba 真分配          ~10 GB
-  − KV 真分配            ~5.66 GB   ← 由 ⑦ 决定
+② 两模型加载后空闲       26.09 GB
+  − Mamba 真分配          ~9.52 GB
+  − KV 真分配            ~4.57 GB   ← 由 ⑦ 决定
 ─────────────────────────────────
-⑩ avail_after_kv_pool   ~11 GB     ← 给 Graph 等用
+剩余 free               ~12 GB     ← 给 Graph 等用
 ```
 
-`27.78 − 10 − 5.66 ≈ 12`（与日志 ~11G 接近）。  
-**11G 是「池子分完还剩多少 free」；5.66G 是「KV 池分到多少」——两个不同量。**
+**~12G 是「池子分完还剩多少 free」；4.57G 是「KV 池分到多少」——两个不同量。**
 
 ```mermaid
 flowchart TB
-    POST["② post 空闲 ≈ 27.8G"]
+    POST["② 两模型加载后空闲 ≈ 26.1G"]
     subgraph budget ["预算记账（定池子大小）"]
-        R4["④ rest = post − pre×(1−f)"]
-        M5["⑤ 中间态 ~8G"]
+        R4["④ 预算起点 = ② − 加载前空闲×(1−f)"]
+        M5["⑤ 中间态 ~7.6G"]
         M6["⑥ 主池 ~2G"]
-        R7["⑦ rest_for_kv ≈ 5.7G（f=0.8）"]
-        KV8["⑧ KV 池 ≈ 5.7G"]
+        R7["⑦ KV可用预算 ≈ 4.4G（f=0.8）"]
+        KV8["⑧ KV 池 ≈ 4.6G / 479k tokens"]
     end
-    subgraph physical ["物理分配（从 post 空闲里拿）"]
-        PM["Mamba ~10G"]
-        PKV["KV ~5.7G"]
-        FREE["⑩ 剩余 free ~11G"]
+    subgraph physical ["物理分配（从②里实际扣减）"]
+        PM["Mamba ~9.5G"]
+        PKV["KV ~4.6G"]
+        FREE["剩余 free ~12G"]
     end
     POST --> R4
     R4 --> M5 --> M6 --> R7 --> KV8
     POST --> PM --> PKV --> FREE
 ```
 
-### 2.3 另一组参考（fraction=0.9，MemProfile 字段名对照）
+### 2.3 参考数值（Qwen3.6-35B-A3B，TP=2，NPU，fraction=0.8）
 
-| 字段 | 数值（f=0.8 那次日志） |
-|------|------------------------|
-| `pre_model_load_gb` | 60.80 GB |
-| `post_model_load_gb` | 27.78 GB |
-| `pre_non_static_reserve_gb` | 12.16 GB（0.8） |
-| `rest_before_mamba_gb` | 15.62 GB |
-| `mamba_intermediate_gb` | 7.97 GB |
-| `mamba_main_state_gb` | 1.99 GB |
-| `rest_for_kv_gb` / `kv_pool_gb` | **5.66 GB** |
-| `avail_after_kv_pool_gb` | **~11 GB** |
-| `npu_graph_gb` | **~1.4 GB** |
+| 含义 | 代码变量 | 值 |
+|------|---------|-----|
+| ① 加载前空闲 | `pre_model_load_memory` | 60.77 GB |
+| ② 两模型加载后空闲 | `available_gpu_memory` | 26.09 GB |
+| ③ 动态预留 | `pre_model_load_memory × (1−f)` | 12.15 GB |
+| ④ 预算起点 | `rest_memory`（扣③后） | 13.94 GB |
+| ⑤ Mamba 中间态 | — | 7.55 GB |
+| ⑥ Mamba 主池 | — | 1.97 GB |
+| ⑦ KV 可用预算 | `rest_memory`（扣⑤⑥后） | **≈ 4.42 GB** |
+| ⑧ KV 池（实分配） | — | **479488 tokens ≈ 4.57 GB** |
+| 池分配后剩余 free | — | **~12 GB** |
+| NPU graph | — | **~1.3 GB** |
 
 要点：
 
-- **5.66G KV** = `15.62 − 7.97 − 1.99`（fraction **0.8**），不是 `21.70 − 10`。
-- **~11G free** = post 减去 Mamba+KV **真分配**后的余量，不是 KV 预算里「又多出 11G」。
-- fraction **0.9** 会把 ④ 从 15.62 抬到 21.70，⑦ 抬到 **~11.7G**，KV 池大约翻倍。
+- **draft 模型（~1.84 GB）已计入②**，所以②= 26.09 GB 而非 27.93 GB。
+- fraction **0.9** 会把 ④ 从 13.94 抬到 20.01，⑦ 抬到 **~10.49G**，KV 池约 **1.10M tokens**。
+- 若同时加 `--max-total-tokens N`，则 `min(profiled, N)` 决定最终池大小（只能缩小，不能扩大）。
 
 ---
 
@@ -355,7 +364,7 @@ disable-radix-cache          → Mamba ratio=1，evictable=0
 ### 4.3 根因链
 
 ```
-fraction 0.8 → KV 池约 48 万 token（小于 0.9 时的 ~59 万）
+fraction 0.8 → KV 池约 48 万 token（0.9 时约 110 万）
     ↓
 每条 3.5k 输入准入约需 input+max_new+page ≈ 5128 token
 122 路全占需 ≈ 62 万 token 预算 → 池物理上不够
@@ -373,18 +382,18 @@ batch_is_full → 不再组 prefill → decode@94
 
 ### 4.4 与稳定 case 对比
 
-| | 3.5k 失败 (0.8) | 3.5k 稳定 (0.9 + max-total-tokens) |
-|--|-----------------|-------------------------------------|
-| KV 池 | ~483k tokens | ~593k tokens |
-| Prefill 完成 | 94 / 122 | 122 / 122 |
-| Decode | @94，queue 28 | @122 |
-| 修复方向 | 提高 fraction 和/或 cap | 已验证 |
+| | 3.5k 失败 (0.8) | 3.5k 稳定 (0.9) | 3.5k 稳定 (0.9 + max-total-tokens 659840) |
+|--|-----------------|-----------------|------------------------------------------|
+| KV 池 | ~479k tokens | ~1100k tokens | ~660k tokens |
+| Prefill 完成 | 94 / 122 | 122 / 122 | 122 / 122 |
+| Decode | @94，queue 28 | @122 | @122 |
+| 剩余 free | ~12 GB | ~6 GB | ~10 GB |
 
 单条准入估算（output 1500）：
 
 ```
 3500 + 1500 + 128 ≈ 5128 token / 请求
-94 × 5128 ≈ 481k  → 与 0.70×483k 一致
+94 × 5128 ≈ 481k  → 与 0.70×479k 一致
 ```
 
 ---
