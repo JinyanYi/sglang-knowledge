@@ -41,7 +41,7 @@ Hy3-preview  gpqa_diamond  40  925.395s  TTFT=21683ms  TPOT=39.88ms
 
 ```bash
 python3 -m sglang.launch_server \
-        --model-path /mnt/paas/weights/Hy3-preview \
+        --model-path <MODEL_PATH>/Hy3-preview \
         --attention-backend ascend \
         --reasoning-parser hunyuan --tool-call-parser hunyuan \
         --device npu \

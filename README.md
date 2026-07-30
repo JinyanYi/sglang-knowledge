@@ -33,6 +33,15 @@
 |------|------|
 | [SGLang OpenAI API 服务器流程](./architecture/sglang-openai-api-server-flow.md) | SGLang 如何实现 OpenAI 兼容 API，包括服务器启动流程和请求处理路径 |
 
+### Agent Skills（踩坑 / 操作手册）
+
+| 文档 | 描述 |
+|------|------|
+| [Agent skills 索引](./agent-skills/README.md) | 早上看护相关 skill 入口；要求下一个 agent 遇坑必须回写文档 |
+| [NPU Docker PYTHONPATH](./agent-skills/npu-docker-pythonpath/SKILL.md) | 容器内跑 SGLang NPU 测试时勿覆盖 CANN `PYTHONPATH`（`tbe` / setUpClass 失败） |
+| [Nightly NPU Qwen3.6-35B](./agent-skills/nightly-npu-qwen36-35b/SKILL.md) | 早上看护 `nightly-test-npu.yml`，只筛 `qwen3_6_35b_a3b` schedule job |
+| [Nightly NPU 本地复现](./agent-skills/nightly-npu-local-repro/SKILL.md) | 内网 NPU 机 docker 复现失败的 Qwen3.6-35B-A3B nightly case（含踩坑账本） |
+
 ---
 
 ## 主题分类
