@@ -80,6 +80,13 @@ Failures:
 这是活文档。triage / API / 脚本若有新坑或更好写法，**立刻改本 SKILL.md**（以及
 `nightly-npu-local-repro` / `daily task for agent.md`），不要只留在聊天里。
 
+## 踩坑账本
+
+| 坑 | 症状 | 处理 |
+|----|------|------|
+| `127.0.0.1:1082` proxy 未监听 | `Connection refused` | 先无 proxy 直连 `api.github.com`；本机也可能开在 `1080` |
+| Ascend **Full Test (NPU)** 与 public Nightly 不是同一 workflow | 用户贴 `ascend/sglang/actions/runs/...` | 用 `repos/ascend/sglang/actions/runs/<id>/jobs` 筛 `qwen3_6_35b_a3b`；失败常见是 **TPOT 上限**（`not less than or equal to`）而非吞吐 |
+
 ## 校准样例
 
 - `2026-07-22` run `29946789102`：6 个 `qwen3_6_35b_a3b_*` 全 success

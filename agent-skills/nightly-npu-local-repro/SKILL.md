@@ -269,3 +269,13 @@ CI 完整 Serving Benchmark 若公开页没有：metrics artifact 无鉴权常 *
 | `max_running_requests` 被降 | 日志 `103 to 17`；TTFT 极高 | 回报必须注明 |
 | 长 case 耗时 | ~1h/次，retry 共 ~70min | 后台跑 + 正确轮询；对比用 `max_attempts=1` |
 | CI metrics artifact | 下载 401 | 公开 HTML / 用户粘贴 Serving Benchmark |
+| stash 盖掉 `environ.py` | `AttributeError: Envs has no attribute SGLANG_OPT_MAMBA_SKIP_DECODE_LOCK` | 从 `origin/main` 补回缺失 Env；勿用过旧 stash 整文件覆盖 |
+| 同机多 NPU job | `Communication_Error_Bind_IP_Port(EI0020)` port 16666 | 本地 repro 设 `HCCL_NPU_SOCKET_PORT_RANGE`（如 `36100-36150`）并换空闲 Phy 对 |
+| 本机 `127.0.0.1:1082` proxy 未起来 | `Connection refused`；`check_nightly.py` 失败 | 先直连试 `api.github.com`（有时通）；本机也可能是 `1080`；git 遇 HTTP2 framing 可加 `GIT_HTTP_VERSION=1.1`；容器内仍 **unset** proxy |
+| 1080p MM case 首跑冷启动 | 同参数 RUN1 TPOT 极差（如 130ms）、吞吐腰斩；RUN2/3 明显好转 | 至少 `RUNS=3`；分析时勿把首跑当稳态；CI 也可能落在差尾 |
+| Full Test vs Nightly 门禁 | Full Test 里 `tpot=50` → `mean_tpot <= 51.0`；吞吐门 `baseline*0.98` | 报失败时写明是 **TPOT 上限** 还是 **吞吐下限**（AssertionError 文案不同） |
+| `pgrep -f run_repeat.sh` 自匹配 | wait 循环永不结束 | 用 `pgrep -f 'scripts/run_repeat.sh'` 或看 OUTDIR `finished=` / PID 文件 |
+| Phy 看似空闲但 HBM 残留/邻卡忙 | 首跑异常差、后续恢复 | 选 `npu-smi` 明确 “No running processes” 的成对 Phy；避开刚释放的卡再观察一轮 |
+| 1024² MM case 与 1080p 同族冷启动 | RUN1 常 TPOT 炸（>51）或吞吐腰斩；RUN2 可能卡在吞吐门（如 1515&lt;1587.6 / 313&lt;352.8）；RUN3 才过 | `RUNS=3`；并行时用**不同 Phy 对 + 不同 port + 不同 HCCL_NPU_SOCKET_PORT_RANGE**；勿把首跑当稳态回归 |
+| smoke 用 `inspect.getsource(setUpClass)` | 看到的是 `@retry` 包装的 `safe_setUpClass`，不是真实 `getattr` 行 | 直接 `rg` 同步后的 `test_npu_performance_utils.py`，或 `print(open(...).read())` |
+| GitHub API rate limit（proxy IP） | `API rate limit exceeded`；Ascend Full Test 查 job 失败 | 等 reset / 换直连；或 scrape job HTML + annotations；优先复用既有 triage 里的 job URL |
