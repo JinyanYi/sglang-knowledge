@@ -92,3 +92,4 @@ Failures:
 - `2026-07-22` run `29946789102`：6 个 `qwen3_6_35b_a3b_*` 全 success
 - `2026-07-29` run `30471373497`：仅 `1p_in128k_out1k_prefix90_50ms` failure  
   `298.41 not greater than or equal to 302.036`（吞吐）
+- `2026-08-10` run `31408520453`：**run 整体被取消**（conclusion=cancelled），35b 取消前已跑完的 6 个全 success，仅 `_aime26` 被波及 cancelled；全量 8 success / 11 cancelled / 2 skipped。cancelled ≠ failure，别当模型挂

@@ -20,6 +20,7 @@
 | [Prefill vs Decode](./prefill-decode.md) | LLM 推理的两个阶段：计算特性差异、Arithmetic Intensity、PD 分离 |
 | [CUDA Graphs](./cuda-graphs.md) | CUDA Graph、Piecewise CUDA Graph 详解，以及 SGLang 实现分析 |
 | [显存预算与 Prefill 调度](./memory-budget-and-scheduling.md) | mem-fraction-static、KV 池 profiling、PrefillAdder、Static/Dynamic 分布与实测 case |
+| [DeepEP on Ascend NPU 适配](./DeepEP-Ascend-NPU%20适配.md) | `--moe-a2a-backend` 语义、normal/low-latency dispatch，以及 896 专家崩溃、HCCL_BUFFSIZE、graph bs 对齐三个坑 |
 
 ### 模型推理
 
@@ -32,6 +33,12 @@
 | 文档 | 描述 |
 |------|------|
 | [SGLang OpenAI API 服务器流程](./architecture/sglang-openai-api-server-flow.md) | SGLang 如何实现 OpenAI 兼容 API，包括服务器启动流程和请求处理路径 |
+
+### 安全
+
+| 文档 | 描述 |
+|------|------|
+| [反序列化 RCE 演示：CVE-2026-15969](./security.md) | SafeUnpickler 黑名单绕过原理、为什么能无鉴权利用、可一键复现的 PoC |
 
 ### Agent Skills（踩坑 / 操作手册）
 

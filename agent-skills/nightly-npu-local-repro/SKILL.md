@@ -180,6 +180,9 @@ ss -lnt | grep -E ':(9930|9999)\b' || true
    （`generated-shared-prefix` 可仍带上作兜底）
 5. **不要改** `output_token_throughput` / 业务参数（除本地路径/gpu/port），否则对比失真
 6. 若要连跑多次做对比：可设 `max_attempts = 1`，避免框架默认 retry=2 把一次变成两次
+7. **对齐 CI 时以 `git show HEAD:<case>` 为准**，不要盲信工作区脏改动。复制 repro 前对一下：
+   `warmup_requests` / `num_prompts` / `max_concurrency` / `output_token_throughput` / `tpot`。
+   日志里确认：`Starting warmup with N sequences`——N 必须与 case 一致（缺省常是 **1**，不是 concurrency）。
 
 ## 7. 容器内跑（PYTHONPATH 追加，勿覆盖）
 
@@ -279,3 +282,7 @@ CI 完整 Serving Benchmark 若公开页没有：metrics artifact 无鉴权常 *
 | 1024² MM case 与 1080p 同族冷启动 | RUN1 常 TPOT 炸（>51）或吞吐腰斩；RUN2 可能卡在吞吐门（如 1515&lt;1587.6 / 313&lt;352.8）；RUN3 才过 | `RUNS=3`；并行时用**不同 Phy 对 + 不同 port + 不同 HCCL_NPU_SOCKET_PORT_RANGE**；勿把首跑当稳态回归 |
 | smoke 用 `inspect.getsource(setUpClass)` | 看到的是 `@retry` 包装的 `safe_setUpClass`，不是真实 `getattr` 行 | 直接 `rg` 同步后的 `test_npu_performance_utils.py`，或 `print(open(...).read())` |
 | GitHub API rate limit（proxy IP） | `API rate limit exceeded`；Ascend Full Test 查 job 失败 | 等 reset / 换直连；或 scrape job HTML + annotations；优先复用既有 triage 里的 job URL |
+| 用户 `dsb` 手动 PASS vs agent ×3 仅末次过 | 同镜像同机，但用户 WT 给 1024 case **本地加了** `warmup_requests=max_concurrency`（HEAD/CI 无）；实测 warmup=120 vs agent/CI warmup=1；再叠加并行 1080p 同机冷启动 | **不要**把交互 `dsb`（`<USER_DEV_CONTAINER>`）当 CI oracle。对比前 `git diff` / `git show HEAD:<case>`；日志对 `Starting warmup with N`；CI 保真用 HEAD 字段 + 专用容器 `run_repeat`；用户 warmup=120 的 PASS 偏暖、不可直接否定 agent |
+| 直接 `bash start_qwen36.sh` 起服务失败 | `Failed to init tbe` / `GEInitializeV2 failed`，进程 30s 内死 | 容器 PYTHONPATH 是**覆盖式**（如 `KimiK3/sglang-kimiK3/python:`）且没 source CANN。按 `npu-docker-pythonpath`：先 `source ascend-toolkit/set_env.sh` + `nnal/atb/set_env.sh`，再 `export PYTHONPATH=<sglang python>:${PYTHONPATH}` 追加；`bash -lc` 内执行 |
+| 起服务后请求 `Connection reset` / 进程自杀 | `Communication_Error_Get_Socket` HcclAllreduce，qwen3_vl forward 栈 | 该 Phy 对 NPU 间 link 通信故障，换一对空闲 Phy（如 8/9 → 4/5）重启 |
+| 带 `--enable-lora` 起服务连环参数坑 | 依次报：speculative 不兼容 → `--max-lora-rank`/`--lora-target-modules` 缺失 → nargs 逗号报错 → KV 显存不足 | ① NPU 上去掉 speculative 参数（NEXTN 与 LoRA 冲突、NGRAM 仅 CUDA/CPU）② 补 `--max-lora-rank 64 --lora-target-modules q_proj k_proj v_proj o_proj`（**空格分隔**）③ `--mem-fraction-static` 提到 0.98 ④ `--max-total-tokens` 减小（如 100000） |
