@@ -250,6 +250,89 @@ Local repro: <case>
 
 CI 完整 Serving Benchmark 若公开页没有：metrics artifact 无鉴权常 **401**；可搜 job HTML 的 `AssertionError`，或请用户贴 benchmark 块。
 
+## 9. 卡死 / hang 时查 plog（Ascend 运行时日志）
+
+测试"卡住了"别只盯 sglang server stdout——**真正的死锁证据在 Ascend 自己的 plog 里**。
+
+### 9.1 plog 在哪
+
+容器内 2 个目录，**别看错**：
+
+| 路径 | 内容 | 大小 | 价值 |
+|------|------|------|------|
+| `/root/ascend/log/run/plog/` | **RUNTIME / HCCL / HCCP 详细日志**，每 PID 一份 | 每个 scheduler ~1-2 MB | **诊断 hang 主用** |
+| `/root/ascend/log/debug/plog/` | 进程退出时 TBE 残留 | 167 B 或 0 B | 几乎没用，SIGABRT 时才多一行 `repository_manager raise error` |
+| `/root/ascend/log/run/device-N/` | device 级日志（hisi_logsmm 等） | 几十 KB | 硬件错误（507014 等）查这里 |
+
+每个 scheduler 各一份，按 PID 命名 `plog-<PID>_<start_ts>.log`。`sglang::scheduler_TP{N}_EP{N}` 对应 `<容器内 PID>`，用 `ps -ef | grep scheduler_TP` 拿。
+
+### 9.2 怎么拷出来
+
+容器内 4 个 scheduler 各 ~2 MB，总共 < 10 MB，**全拷**：
+
+```bash
+mkdir -p "$HOME/nightly_repro/coredump/plog"
+for pid in $(docker exec sglang-yjy ps -ef | grep 'scheduler_TP' | grep -v grep | awk '{print $2}'); do
+  src=$(docker exec sglang-yjy ls /root/ascend/log/run/plog/plog-${pid}_*.log 2>/dev/null | head -1)
+  docker cp sglang-yjy:$src "$HOME/nightly_repro/coredump/plog/plog-TPx_EPx.${pid}.log"
+done
+```
+
+### 9.3 plog 能看啥 / 怎么看
+
+`grep` 几个关键 pattern 就能定位 AI Core 死锁 / HCCL collective timeout：
+
+| 搜什么 | 含义 |
+|--------|------|
+| `SynchronizeExecutedTask: report three minutes timeout!` | **RUNTIME 每 3 分钟报一次**：该 stream 上 task 同步超时。**连续 2 次 task_id/sqHead/pendingNum 不变 = 100% 死锁** |
+| `stream_id=N, sq_id=M, task_id=K, sqHead=H, pendingNum=P` | 死锁 task 的精确位置。**4 个 scheduler 都卡在同一 stream_id=45** + task_id 一致 = 同一个 cluster collective 死锁 |
+| `TryToRecycleProgPool` / `TryToRecycleModulesPool` | runtime 在 timeout 间隔里尝试回收资源，**失败** = 没人能动这 task |
+| `create hccl transport:communicator[XXX_group_name_N], local rank[R], remote rank[R'], transporttype=[HCCS_SW\|SIO]` | HCCL 通信链路建连。dispatch hang 时通常看到 `ReduceScatter_group_name_3` / `AllGather_group_name_3*` 之后 **再无新条目** = 通信没起来或卡了 |
+| `[ERROR]` / `[FATAL]` / `507014` | 显式 driver 错误。**可能没有**（silent hang）；有就**直接定位** |
+
+**4-scheduler 对比模板**（发现 task_id 完全相同 = 等同一个 collective）：
+
+```bash
+for f in $HOME/nightly_repro/coredump/plog/plog-*.log; do
+  echo "--- $(basename $f) ---"
+  grep "three minutes timeout" "$f"
+done
+```
+
+观察点：
+- 几个 scheduler **task_id 相同** → 它们在等同一个 collective（被动方）
+- 哪个 task_id 不同 → 它是发起方 / 不同阶段
+- 几次 timeout 之间 task_id 不变 → 真死锁（不是慢）
+- 比对 npu-smi `AICore%`：1 张卡 100%、其余 0% = 发起方在自旋等，其余 3 张在等通信
+
+### 9.4 plog vs sglang server stdout
+
+| 信息 | sglang log | plog |
+|------|-----------|------|
+| 加载完成 / fired up | ✅ | ❌ |
+| Prefill/Decode batch throughput | ✅ | ❌ |
+| Python 栈（`py-spy dump`） | ❌（要单独 attach） | ❌ |
+| **HCCL collective 状态 / 死锁** | ❌ | ✅ |
+| **AI Core / stream 真实在做什么** | ❌ | ✅ |
+| **driver 级 507014 / EZ 错误** | 偶有透传 | ✅（device 子目录更全） |
+
+**经验**：sglang stdout 一直 `200 OK` 但 progress 卡 0% → 直接翻 plog，不要先抓 coredump。plog 看 timeout 模式就能在 30s 内确认"是真死锁还是慢"。
+
+### 9.5 SIGABRT / SIGQUIT 拿 coredump
+
+plog 看完如果是真死锁，**`py-spy dump` 拿 Python 栈**就能定位到 `_intranode_dispatch` / `_intranode_combine` / 哪个 moe 路径。要更深的 native C 栈再 SIGABRT 拿 coredump：
+
+```bash
+# Python 默认 SIGQUIT handler 吞掉信号 → 用 SIGABRT
+for pid in $(docker exec sglang-yjy ps -ef | grep scheduler_TP | grep -v grep | awk '{print $2}'); do
+  docker exec sglang-yjy kill -ABRT $pid
+done
+sleep 30
+docker exec sglang-yjy ls -lh /tmp/core-file/   # core_pattern 已配 /tmp/core-file/core.%t.%e.%p
+```
+
+⚠️ 每个 core 20+ GB（含 30 GB 权重），4 个共 80+ GB。**保留 1 个**（`AICore 100%` 那个 = 发起方，最有诊断价值），其他 `rm -f` 释放空间。
+
 ## 可复用脚本
 
 | 脚本 | 用途 |
@@ -286,3 +369,6 @@ CI 完整 Serving Benchmark 若公开页没有：metrics artifact 无鉴权常 *
 | 直接 `bash start_qwen36.sh` 起服务失败 | `Failed to init tbe` / `GEInitializeV2 failed`，进程 30s 内死 | 容器 PYTHONPATH 是**覆盖式**（如 `KimiK3/sglang-kimiK3/python:`）且没 source CANN。按 `npu-docker-pythonpath`：先 `source ascend-toolkit/set_env.sh` + `nnal/atb/set_env.sh`，再 `export PYTHONPATH=<sglang python>:${PYTHONPATH}` 追加；`bash -lc` 内执行 |
 | 起服务后请求 `Connection reset` / 进程自杀 | `Communication_Error_Get_Socket` HcclAllreduce，qwen3_vl forward 栈 | 该 Phy 对 NPU 间 link 通信故障，换一对空闲 Phy（如 8/9 → 4/5）重启 |
 | 带 `--enable-lora` 起服务连环参数坑 | 依次报：speculative 不兼容 → `--max-lora-rank`/`--lora-target-modules` 缺失 → nargs 逗号报错 → KV 显存不足 | ① NPU 上去掉 speculative 参数（NEXTN 与 LoRA 冲突、NGRAM 仅 CUDA/CPU）② 补 `--max-lora-rank 64 --lora-target-modules q_proj k_proj v_proj o_proj`（**空格分隔**）③ `--mem-fraction-static` 提到 0.98 ④ `--max-total-tokens` 减小（如 100000） |
+| MoE deepep dispatch hang（silent） | sglang stdout 一直 `200 OK` 但 GSM8K tqdm 0/200 卡住；NPU 1 张 AICore 100%、另 3 张 0%；HTTP retry 雪崩 → AssertionError 0.0；plog 每 3 min `SynchronizeExecutedTask: report three minutes timeout!`，4 scheduler 卡同一 `stream_id=45` 的同 `task_id` | ① 立刻翻 `/root/ascend/log/run/plog/plog-<scheduler_pid>_*.log` 抓 `three minutes timeout` 模式 ② `py-spy dump --pid <sched_pid>` 抓 Python 栈（基本都会落在 `deep_ep/strategies/normal_strategy.py:250` `_intranode_dispatch`，locals `quant_type="int8" use_quant=True`） ③ 真要 native C 栈用 `kill -ABRT <pid>`（**别用 SIGQUIT**，Python 默认 handler 吞掉不出 core）；保留 1 个 core、其余 `rm -f` 释放 80+ GB ④ `--base-gpu-id N` 重启不绕开（已验）；常见诱因 `--moe-a2a-backend deepep --deepep-mode auto` + `DEEP_NORMAL_MODE_USE_INT8_QUANT=1` + Qwen3 MoE w8a8 ⑤ 详见 §9 |
+| `--max-attempts` 子测试改错基类 | 自己的 `max_attempts=1` 没生效，框架默认跑 2-3 次 | 改 `cls.max_attempts = 1`（**类属性**，不是 `setUpClass` 局部变量） |
+
