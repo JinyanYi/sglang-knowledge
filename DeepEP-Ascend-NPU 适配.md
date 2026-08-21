@@ -78,6 +78,8 @@ actualSize = (maxBs × dispatch_size × ep × local_experts + maxBs × combine_s
 
 **补充**："关了 graph 才暴露" 是因为 graph 复播跳过 tiling；eager 才每次做 tiling。
 
+**K3 满血 PD（2026-08-13）**：EP16 + `HCCL_BUFFSIZE=2048` 仍可能 **没有** too SMALL、只有 `HcclAllocComResourceByTiling ret=24`。那是 leftover（KV 分完后 ~4.7GB @ f=0.92）不够 HCCL **整块** 申请，不是公式 1733MB 没盖住。处理：降 `SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK`（maxBs）并相应降 `HCCL_BUFFSIZE`，或把 fraction 降到刚好比 `1−post/pre` 高一点以增大 leftover。见 [Memory Breakdown §6](./Memory%20Breakdown%20and%20case%20study.md)。
+
 ## 5. 问题三：CUDA Graph bs 必须是 attn_tp_size 的倍数
 
 **现象**：decode 节点 `--cuda-graph-bs 1 2` 无效，启动时 `assert len(capture_bs) > 0` 失败。

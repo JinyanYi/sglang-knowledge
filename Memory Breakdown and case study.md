@@ -410,7 +410,107 @@ batch_is_full → 不再组 prefill → decode@94
 
 ---
 
-## 6. 调参速查
+## 6. Case：Kimi-K3 满血 W4A8 PD（4×A3，93 层，DeepEP）
+
+拓扑（round3 起）：Prefill 209+212 与 Decode 216+217 **都是** `tp=16 pp=2 nnodes=2`，`SGLANG_PP_LAYER_PARTITION=48,45`，`ep_size=16`。权重 `/home/weights/Kimi-K3-w4a8-int-moe`（磁盘 ~1.49TB，93 层）。每 die 64GB。Prefill DeepEP 可开关；Decode **常开** DeepEP（LL）。冒烟：`8k.sh` in=8000 out=1000 conc=1。
+
+### 6.1 `mem-fraction-static` **管不到** weight-load OOM
+
+公式里 `pre` 是 `init_torch_distributed` **之后**才测的。`mem-fraction` 只在 **权重装完之后** 算 KV（`reserve = pre × (1−f)`）。`create_weights` / `torch.empty` 炸的时候还没走到 `alloc_memory_pool`。
+
+Round0（2026-08-13）四机在 `modelslim_w4a8_int8_moe.create_weights` 炸：
+
+```
+Load weight begin. avail mem=17.81 GB
+NPU out of memory. Tried to allocate 296.00 MiB
+  (NPU 10; 61.27 GiB total; 17.36 GiB allocated; 183 MiB free)
+```
+
+**当时误判**：以为 HCCL=2048 从卡上划走了 ~44GB（PyTorch 看不见）。
+**更正（round2/4 干净卡实测）**：Load weight begin **avail≈60.8–61.1 GB**，HCCL=800 / 1200 / **2048 都一样**。Round0 的 17GB 是 **NPU 上残留占用**（上次崩没清干净 / 别人进程），不是 2GB HCCL 吃掉 44GB。`HCCL_BUFFSIZE` 多数是 **第一次集合通信 / DeepEP tiling 时**才真正要连续块，不是 load 前就把卡掏空。
+
+满血 93 层 **必须 pp=2**。Decode round2 `pp=1 tp=32`：每个 rank 扛全部 93 层，create_weights 把干净卡 61GB 打满 OOM。Prefill `pp=2` 实测：
+
+| | PP0 (209) | PP1 (212) |
+|--|-----------|-----------|
+| Load weight end usage | **53.58 GB** | **51.20 GB** |
+| Load weight end avail | ~7.3–7.5 GB | ~9.6–9.9 GB |
+| Memory pool end avail | ~4.85–5.18 GB | ~7.2–7.55 GB |
+| `max_total_num_tokens` | **176384**（8k×1 足够） | 同切 |
+
+粗算：磁盘 1486GB × (48/93) / 16 die ≈ **48GB/die** 量级，与 PP0 ~53.6GB 同阶（含激活/量化辅助）。
+
+### 6.2 DeepEP 对 HCCL 的下限（decode LL）
+
+`MoeLowLatencyDispatchV2` 窗口（见 DeepEP 笔记）：
+
+```
+actualSize ∝ maxBs × (ep × local_experts + (k+shared))
+ep × local_experts = num_experts = 896   ← 不随 EP 变小
+```
+
+历史：EP8、maxBs=64 → **1733MB**，HCCL=800 会打 `HCCL_BUFFSIZE is too SMALL`。
+本次 `pp=2` 后 **EP=16**，`--cuda-graph-bs 16`，`SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK` 曾设 64。
+
+**`ret=24` ≠ `HCCL_BUFFSIZE is too SMALL`：**
+
+| 现象 | 含义 |
+|------|------|
+| 日志有 `NEEDED=1733MB, HCCL_BUFFSIZE=800MB` | CheckWinSize 公式不够，升 buffsize |
+| 只有 `HcclAllocComResourceByTiling ret=24`，**没有** too SMALL | 公式过了，但 HCCL 按 **整块 BUFFSIZE** 从 **KV 池分完后的 leftover** 申请连续内存失败 |
+
+Round4：env=2048 已读到，PP0 leftover≈**4.7GB**（≈ `pre×(1−0.92)`），仍 ret=24。再升 2048 没用。应 **缩小 maxBs**（dispatch tokens 64→16，窗口约 433MB）并把 HCCL **降到 800**，必要时略降 fraction 把 leftover 从 4.7 抬到 ~6GB。fraction 不能低于 `1−post/pre`≈0.88，否则 KV rest 变负。
+
+Round5 实测印证 leftover 公式：`f=0.90` → leftover **5.9–6.2GB**，HCCL=800 + maxBs=16 一次过 tiling，Decode `fired up`。随后 router `:8077` + `8k.sh` **Successful requests=1**（8000+1000，E2E 106s）。
+
+Prefill 走 DeepEP **normal** 不是 LL，HCCL=800 已过 Memory pool + `fired up`。不必跟 Decode 绑死同一 buffsize。
+
+### 6.3 调参方向（8k 冒烟，DeepEP 要开）
+
+| 旋钮 | 对 weight-load | 对 KV / 8k | 对 DeepEP |
+|------|----------------|------------|-----------|
+| `HCCL_BUFFSIZE` | 干净卡上 **几乎不影响** load begin avail | **按整块**从 leftover 申请（在 KV 之后） | Prefill normal：800 够。Decode LL：先把 maxBs/dispatch tokens 降到窗口 < leftover，再设 buffsize；盲目 2048 会在 leftover≈4.7GB 上 `ret=24` |
+| ↑ `mem-fraction-static` | 无 | leftover≈`pre×(1−f)` **变小**；KV 变大 | tiling 更挤 |
+| ↓ `mem-fraction-static` | 无 | leftover 变大；下限 `f ≥ 1−post/pre`≈0.88 | 给 HCCL 连续块 |
+| `SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK` | 无 | 无 | **maxBs**，线性缩小 LL 窗口。8k×1 用 16 即可 |
+| `--disable-cuda-graph` | 无 | 省 graph | 冒烟关；正式测 Decode 再开 |
+| **pp=2（P 和 D）** | **满血 93 层唯一能装下的切法** | 每 stage ~48/45 层 | `ep_size=16` |
+
+8k×1 约需 9k token，KV=176k 已富余。NPU：`expandable_segments` **不能**和 `max_split_size_mb` 同开（round1 立刻 `_npu_init` RuntimeError）。
+
+### 6.4 实验轮次
+
+| Round | mem-f | P HCCL | D 并行 | D HCCL | graph | 结果 |
+|-------|-------|--------|--------|--------|-------|------|
+| 0 | 0.75 | 2048 | tp32 pp1 | 2048 | on | create_weights OOM，avail≈**17GB**（卡不干净，不是 HCCL） |
+| 1 | 0.92 | 800 | tp32 pp1 | 1200 | off | `expandable_segments` + `max_split_size_mb:256` → `_npu_init` 立刻炸 |
+| 2 | 0.92 | 800 | tp32 pp1 | 1200 | off | 干净卡 load begin≈**61GB**。Prefill 权重+KV 成功，Uvicorn `:30001`。Decode **pp=1 满 93 层 OOM** |
+| 3 | 0.92 | 800 | **tp16 pp2** | 1200 | off | Decode 权重装完；随后 **`HcclAllocComResourceByTiling ret=24`** |
+| 4 | 0.92 | 800 | tp16 pp2 | **2048** | off | env 确认 `HCCL_BUFFSIZE=2048`。权重 53.58GB / pool leftover **PP0≈4.7GB**。**无** `too SMALL`，仍 `HcclAllocComResourceByTiling ret=24`（2048 整块从 4.7GB leftover 申请失败） |
+| 5 | **0.90** | 800 | tp16 pp2 | **800** | off | **成功 + 8k 冒烟通过**。`max_dispatch_tokens=16`。PP0 leftover≈**5.9–6.2GB**（≈`pre×0.10`），KV=**84608**。`fired up`。`8k.sh` 1/1，in=8000 out=1000，E2E **106s**，output **9.41 tok/s**（graph 关着；TTFT/ITL 报表为 0，mini-lb 流式统计不可信） |
+
+脚本备份：
+
+- `K3/backups/round0_mem0.75_hccl2048/`
+- `K3/backups/round1_mem0.92_hcclP800_D1200_bad_alloc_conf/`
+- `K3/backups/round2_mem0.92_hcclP800_D1200_decode_pp1/`
+- `K3/backups/round3_decode_pp2_hccl1200/`
+- `K3/backups/round4_mem0.92_hcclP800_D2048_decode_pp2/`
+- `K3/backups/round5_mem0.90_hccl800_dispatch16/`
+
+启动（容器 `sglang-yjy-k3`，不要 wall / 不要动别人的容器）：
+
+```
+# 209: NODE_RANK=0 USE_DEEPEP=1 bash prefill.sh
+# 212: NODE_RANK=1 USE_DEEPEP=1 bash prefill.sh
+# 216: NODE_RANK=0 bash decode.sh
+# 217: NODE_RANK=1 bash decode.sh
+# 209 ready 后: bash router.sh && bash 8k.sh
+```
+
+---
+
+## 7. 调参速查
 
 | 目标 | 手段 |
 |------|------|
@@ -418,10 +518,14 @@ batch_is_full → 不再组 prefill → decode@94
 | 更多路 decode | 查 `max-mamba-cache-size ÷ ratio`（radix/extra_buffer 影响 ratio） |
 | 每轮 prefill 条数 | `prefill-max-requests` |
 | 单轮 prefill token | `max-prefill-tokens` |
+| **weight-load OOM（avail≈17GB）** | 先确认卡干净（残留占用）；HCCL 在干净卡上几乎不改 load begin；满血 93 层用 **pp=2** |
+| **装完权重 rest 变负** | ↑ fraction（少 reserve） |
+| DeepEP LL tiling `ret=24`（无 too SMALL） | leftover 不够整块 `HCCL_BUFFSIZE`：降 maxBs/`NUM_MAX_DISPATCH_TOKENS`，并降 buffsize；或略降 fraction 增大 leftover（下限 ≈0.88） |
+| DeepEP LL `HCCL_BUFFSIZE is too SMALL` | 升 decode buffsize（EP8/maxBs64 ≈ 1733MB） |
 | 准入逻辑代码 | `schedule_policy.py` → `PrefillAdder` |
 
 ---
 
 ## 标签
 
-`sglang` `显存` `KV-cache` `mem-fraction-static` `PrefillAdder` `调度` `mamba` `NPU`
+`sglang` `显存` `KV-cache` `mem-fraction-static` `PrefillAdder` `调度` `mamba` `NPU` `HCCL_BUFFSIZE` `DeepEP` `Kimi-K3`

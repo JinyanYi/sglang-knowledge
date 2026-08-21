@@ -27,6 +27,7 @@
 | 文档 | 描述 |
 |------|------|
 | [模型推理参数设置](./model-temperature-sampling-params.md) | Temperature 参数对模型输出的影响机制，以及 SGLang 中的实现 |
+| [Qwen3.8 Day-0 适配 PR 分析](./qwen3-8-day0-pr34585.md) | Qwen3.8-2.4T-A95B 模型创新点 + SGLang #34585 的 MoE 融合/DeepEP v2/GDN/ReplaySSM/PD-PP 适配全景 |
 
 ### 架构分析
 
