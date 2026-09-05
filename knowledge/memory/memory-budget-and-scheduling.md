@@ -1,6 +1,6 @@
 # 显存预算与 Prefill 调度
 
-> 关联文档：[Prefill vs Decode](./prefill-decode.md)、[投机推理](./speculative-decoding.md)、[CUDA Graphs](./cuda-graphs.md)
+> 关联文档：[Prefill vs Decode](../inference/prefill-decode.md)、[投机推理](../inference/speculative-decoding.md)、[CUDA Graphs](../inference/cuda-graphs.md)
 
 ---
 

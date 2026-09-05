@@ -39,14 +39,33 @@ export PYTHONPATH=$HOME/community/sglang/python:
 
 ## 症状
 
-- `ModuleNotFoundError: tbe`
-- NPU compile / `AclSetCompileopt` / error `500001`
-- 测试在 `setUpClass` / server 启动阶段约几十秒失败（不是 bench 阶段）
-- 看起来像 GPU/port 冲突，实际是环境被盖掉
+按出现阶段分两类，**根因相同**：
+
+| 阶段 | 报错 |
+|---|---|
+| 跑测试 / `setUpClass` | `ModuleNotFoundError: tbe` |
+| | NPU compile / `AclSetCompileopt` / error `500001` |
+| | 测试在 `setUpClass` 阶段约几十秒失败（**不是** bench 阶段） |
+| **直接起服务** | `Failed to init tbe` / `GEInitializeV2 failed`，进程 **30s 内死掉** |
+
+共同点：**看起来像 GPU / port / 显存冲突，实际是环境被盖掉**。
+别去查卡和端口。
+
+### 覆盖式的典型来源
+
+不只是手写 `export PYTHONPATH=...:`，**脚本里也会写死覆盖式**，例如：
+
+```bash
+# BAD — 脚本里硬编码覆盖，常见于各项目自己的 start_*.sh
+export PYTHONPATH=<some-project>/sglang/python:
+```
+
+遇到 `Failed to init tbe` 先检查：`grep -rn 'PYTHONPATH' <启动脚本>`，
+确认是 `:<path>:` 覆盖式还是 `:${PYTHONPATH}` 追加式。
 
 ## 排查
 
-1. 失败日志里搜 `tbe` / `AclSetCompileopt` / `500001`
+1. 失败日志里搜 `tbe` / `AclSetCompileopt` / `500001` / `GEInitializeV2`
 2. 在同一 `bash -lc` 里打印：`echo "$PYTHONPATH"`，确认含 Ascend/CANN 相关目录且含 sglang `python`
 3. 改成「source 后追加」再跑；不要为这个错误去改 `HCCL_BUFFSIZE` / port / `base-gpu-id`
 
@@ -60,5 +79,10 @@ export PYTHONPATH=$HOME/community/sglang/python:
 
 ## Living doc
 
-若再遇到环境/PYTHONPATH/CANN 相关新坑，**更新本文件**，并在
-`nightly-npu-local-repro/SKILL.md` 的「踩坑账本」加一条交叉引用。
+若再遇到环境/PYTHONPATH/CANN 相关新坑，**更新本文件即可** ——
+不要再去 `nightly-local-repro` 的踩坑账本加重复条目（那边已归口到本文，只留链接）。
+
+相关：
+
+- [`nightly-local-repro/`](../nightly-local-repro/SKILL.md) — 复现流程（本文件是其环境前置）
+- [`../npu-device-selection/`](../npu-device-selection/SKILL.md) — port / `--base-gpu-id` 撞车（**与本坑无关**，别混）

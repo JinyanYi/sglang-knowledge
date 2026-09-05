@@ -10,8 +10,8 @@ description: >-
 
 # Nightly NPU 失败 case：本地 docker 复现
 
-配合 `nightly-npu-qwen36-35b`：先定位失败 job，再在 NPU 机器上 docker 复现并回报
-output tok/s / TTFT / TPOT / 是否过门槛。
+配合 [`nightly-watch/`](../nightly-watch/SKILL.md)：先定位失败 job，再在 NPU 机器上 docker
+复现并回报 output tok/s / TTFT / TPOT / 是否过门槛。
 
 日更任务（本机私有，不进公开仓）：`$HOME/daily task for agent.md`
 
@@ -19,8 +19,9 @@ output tok/s / TTFT / TPOT / 是否过门槛。
 
 **这是活文档。** 跑复现时如果踩到任何新坑、发现步骤过时、或有更好做法：
 
-1. **立刻更新本 `SKILL.md`**（以及相关的 `npu-docker-pythonpath` / `nightly-npu-qwen36-35b` / 本机 `daily task for agent.md`）
-2. 在文末「踩坑账本」追加一条：日期、症状、根因、修复
+1. **先判断这个坑属于哪一类**（见文末「踩坑账本」的归口表），
+   **写到对应文档去**，不要一律塞进本文
+2. 只有**本复现流程独有**的坑才追加到本文表格
 3. 不要只写在聊天里——下一个 cron agent 只能靠这些文件
 
 > 公开仓里一律用 `$HOME` / `<PLACEHOLDER>`。真实镜像、模型路径、proxy 端口以本机
@@ -29,10 +30,10 @@ output tok/s / TTFT / TPOT / 是否过门槛。
 ## 端到端流程（零背景 agent）
 
 ```text
-1. triage nightly (skill: nightly-npu-qwen36-35b / scripts/check_nightly.py)
+1. triage nightly (skill: nightly-watch / scripts/check_nightly.py)
 2. 若有 qwen3_6_35b_a3b failure → 本 skill 本地复现
 3. 回报用户：CI 数 vs 本地数 / PASS|FAIL / 日志路径
-4. 若过程有新问题 → 更新 skill（见上）
+4. 若过程有新问题 → 按归口表更新对应 skill（见上）
 ```
 
 ## 0. 网络（本机常需要）
@@ -186,7 +187,7 @@ ss -lnt | grep -E ':(9930|9999)\b' || true
 
 ## 7. 容器内跑（PYTHONPATH 追加，勿覆盖）
 
-见 skill `npu-docker-pythonpath`（`tbe` / 500001 坑）：
+见 skill [`npu-docker-env`](../npu-docker-env/SKILL.md)（`tbe` / 500001 坑）：
 
 ```bash
 docker exec -d sglang-nightly-repro bash -lc '
@@ -202,8 +203,9 @@ python3 -u "$HOME/nightly_repro/<repro>.py" 2>&1 | tee "$HOME/nightly_repro/run.
 多次重复可复用：
 
 ```bash
+# 相对 sglang-knowledge 仓库根目录
 CONTAINER=sglang-nightly-repro TEST=/path/to/repro.py RUNS=3 \
-  bash personal/sglang-knowledge/agent-skills/nightly-npu-local-repro/scripts/run_repeat.sh
+  bash runbooks/nightly-local-repro/scripts/run_repeat.sh
 ```
 
 ### 盯日志时注意
@@ -250,125 +252,66 @@ Local repro: <case>
 
 CI 完整 Serving Benchmark 若公开页没有：metrics artifact 无鉴权常 **401**；可搜 job HTML 的 `AssertionError`，或请用户贴 benchmark 块。
 
-## 9. 卡死 / hang 时查 plog（Ascend 运行时日志）
+## 9. 复现过程中「卡住了」怎么办
 
-测试"卡住了"别只盯 sglang server stdout——**真正的死锁证据在 Ascend 自己的 plog 里**。
+**测试卡住时别只盯 sglang server stdout** —— 死锁证据在 Ascend 自己的 plog 里。
 
-### 9.1 plog 在哪
+完整取证链（plog → py-spy → coredump）已迁至
+**[`debugging/deep-ep/SKILL.md`](../../debugging/deep-ep/SKILL.md)**：
 
-容器内 2 个目录，**别看错**：
+| 你要做的事 | 去哪 |
+|---|---|
+| 判断「真死锁」还是「只是慢」 | [`deep-ep/ §2`](../../debugging/deep-ep/SKILL.md)（plog timeout 模式） |
+| silent hang 的识别（`200 OK` 但 progress 卡 0%） | [`deep-ep/ §1`](../../debugging/deep-ep/SKILL.md) |
+| 抓 Python 栈 | [`deep-ep/ §5`](../../debugging/deep-ep/SKILL.md)（`py-spy dump`） |
+| 抓 native C 栈 | [`deep-ep/ §6`](../../debugging/deep-ep/SKILL.md)（`kill -ABRT`，**别用 SIGQUIT**） |
+| `507014` vs `507015` 分不清 | [`deep-ep/ §3`](../../debugging/deep-ep/SKILL.md) |
+| 端口 / `HcclAllreduce` 报错 | [`debugging/hccl/`](../../debugging/hccl/SKILL.md) |
 
-| 路径 | 内容 | 大小 | 价值 |
-|------|------|------|------|
-| `/root/ascend/log/run/plog/` | **RUNTIME / HCCL / HCCP 详细日志**，每 PID 一份 | 每个 scheduler ~1-2 MB | **诊断 hang 主用** |
-| `/root/ascend/log/debug/plog/` | 进程退出时 TBE 残留 | 167 B 或 0 B | 几乎没用，SIGABRT 时才多一行 `repository_manager raise error` |
-| `/root/ascend/log/run/device-N/` | device 级日志（hisi_logsmm 等） | 几十 KB | 硬件错误（507014 等）查这里 |
-
-每个 scheduler 各一份，按 PID 命名 `plog-<PID>_<start_ts>.log`。`sglang::scheduler_TP{N}_EP{N}` 对应 `<容器内 PID>`，用 `ps -ef | grep scheduler_TP` 拿。
-
-### 9.2 怎么拷出来
-
-容器内 4 个 scheduler 各 ~2 MB，总共 < 10 MB，**全拷**：
-
-```bash
-mkdir -p "$HOME/nightly_repro/coredump/plog"
-for pid in $(docker exec sglang-yjy ps -ef | grep 'scheduler_TP' | grep -v grep | awk '{print $2}'); do
-  src=$(docker exec sglang-yjy ls /root/ascend/log/run/plog/plog-${pid}_*.log 2>/dev/null | head -1)
-  docker cp sglang-yjy:$src "$HOME/nightly_repro/coredump/plog/plog-TPx_EPx.${pid}.log"
-done
-```
-
-### 9.3 plog 能看啥 / 怎么看
-
-`grep` 几个关键 pattern 就能定位 AI Core 死锁 / HCCL collective timeout：
-
-| 搜什么 | 含义 |
-|--------|------|
-| `SynchronizeExecutedTask: report three minutes timeout!` | **RUNTIME 每 3 分钟报一次**：该 stream 上 task 同步超时。**连续 2 次 task_id/sqHead/pendingNum 不变 = 100% 死锁** |
-| `stream_id=N, sq_id=M, task_id=K, sqHead=H, pendingNum=P` | 死锁 task 的精确位置。**4 个 scheduler 都卡在同一 stream_id=45** + task_id 一致 = 同一个 cluster collective 死锁 |
-| `TryToRecycleProgPool` / `TryToRecycleModulesPool` | runtime 在 timeout 间隔里尝试回收资源，**失败** = 没人能动这 task |
-| `create hccl transport:communicator[XXX_group_name_N], local rank[R], remote rank[R'], transporttype=[HCCS_SW\|SIO]` | HCCL 通信链路建连。dispatch hang 时通常看到 `ReduceScatter_group_name_3` / `AllGather_group_name_3*` 之后 **再无新条目** = 通信没起来或卡了 |
-| `[ERROR]` / `[FATAL]` / `507014` | 显式 driver 错误。**可能没有**（silent hang）；有就**直接定位** |
-
-**4-scheduler 对比模板**（发现 task_id 完全相同 = 等同一个 collective）：
-
-```bash
-for f in $HOME/nightly_repro/coredump/plog/plog-*.log; do
-  echo "--- $(basename $f) ---"
-  grep "three minutes timeout" "$f"
-done
-```
-
-观察点：
-- 几个 scheduler **task_id 相同** → 它们在等同一个 collective（被动方）
-- 哪个 task_id 不同 → 它是发起方 / 不同阶段
-- 几次 timeout 之间 task_id 不变 → 真死锁（不是慢）
-- 比对 npu-smi `AICore%`：1 张卡 100%、其余 0% = 发起方在自旋等，其余 3 张在等通信
-
-### 9.4 plog vs sglang server stdout
-
-| 信息 | sglang log | plog |
-|------|-----------|------|
-| 加载完成 / fired up | ✅ | ❌ |
-| Prefill/Decode batch throughput | ✅ | ❌ |
-| Python 栈（`py-spy dump`） | ❌（要单独 attach） | ❌ |
-| **HCCL collective 状态 / 死锁** | ❌ | ✅ |
-| **AI Core / stream 真实在做什么** | ❌ | ✅ |
-| **driver 级 507014 / EZ 错误** | 偶有透传 | ✅（device 子目录更全） |
-
-**经验**：sglang stdout 一直 `200 OK` 但 progress 卡 0% → 直接翻 plog，不要先抓 coredump。plog 看 timeout 模式就能在 30s 内确认"是真死锁还是慢"。
-
-### 9.5 SIGABRT / SIGQUIT 拿 coredump
-
-plog 看完如果是真死锁，**`py-spy dump` 拿 Python 栈**就能定位到 `_intranode_dispatch` / `_intranode_combine` / 哪个 moe 路径。要更深的 native C 栈再 SIGABRT 拿 coredump：
-
-```bash
-# Python 默认 SIGQUIT handler 吞掉信号 → 用 SIGABRT
-for pid in $(docker exec sglang-yjy ps -ef | grep scheduler_TP | grep -v grep | awk '{print $2}'); do
-  docker exec sglang-yjy kill -ABRT $pid
-done
-sleep 30
-docker exec sglang-yjy ls -lh /tmp/core-file/   # core_pattern 已配 /tmp/core-file/core.%t.%e.%p
-```
-
-⚠️ 每个 core 20+ GB（含 30 GB 权重），4 个共 80+ GB。**保留 1 个**（`AICore 100%` 那个 = 发起方，最有诊断价值），其他 `rm -f` 释放空间。
+> **只记一条**：`200 OK` 但 progress 卡 0% → 直接翻 plog，**不要先抓 coredump**
+> （每个 20+ GB，慢）。plog 看 timeout 模式能在 30s 内定性。
 
 ## 可复用脚本
 
 | 脚本 | 用途 |
 |------|------|
-| `nightly-npu-qwen36-35b/scripts/check_nightly.py` | 查 schedule nightly + 筛 35B-A3B job |
-| `nightly-npu-local-repro/scripts/run_repeat.sh` | 容器内同一 case 连跑 N 次并抽指标 |
+| [`nightly-watch/scripts/check_nightly.py`](../nightly-watch/scripts/check_nightly.py) | 查 schedule nightly + 筛 35B-A3B job |
+| [`scripts/run_repeat.sh`](./scripts/run_repeat.sh) | 容器内同一 case 连跑 N 次并抽指标 |
 
-## 踩坑账本（追加在此）
+## 踩坑账本
+
+> ### 归口表 —— 这些坑**不在这里维护**
+>
+> 踩到下面的坑请**去对应文档更新**，不要在本表重复添加：
+>
+> | 类别 | 典型报错 / 场景 | 去哪 |
+> |---|---|---|
+> | 环境 | `ModuleNotFoundError: tbe`、`500001`、`GEInitializeV2 failed`、PYTHONPATH 覆盖 | [`../npu-docker-env/`](../npu-docker-env/SKILL.md) |
+> | 通信 | `EI0020` 端口耗尽、`HcclAllreduce` socket 失败、`HCCL_BUFFSIZE`、`max_running_requests` 被降 | [`../../debugging/hccl/`](../../debugging/hccl/SKILL.md) |
+> | 选卡 | 空闲 Phy 判断、HBM 残留、多 job 端口/卡隔离 | [`../npu-device-selection/`](../npu-device-selection/SKILL.md) |
+> | hang | silent hang、plog、`py-spy`、coredump、`507014`/`507015` | [`../../debugging/deep-ep/`](../../debugging/deep-ep/SKILL.md) |
+> | git | 脏树导致 `pull --ff-only` Abort、stash 覆盖事故 | [`../git-workflow.md`](../git-workflow.md) |
+>
+> 本表**只收复现流程 / 脚本 / 测试框架独有**的坑。
 
 | 坑 | 症状 | 处理 |
 |----|------|------|
-| 无 proxy | `git pull` / GitHub 连接超时 | `export http(s)_proxy=http://127.0.0.1:<PROXY_PORT>` |
-| community/ascend 脏树 | `pull --ff-only` Abort | stash 指定文件后再 pull；community stash 先别盲目 pop |
-| `cp -rf` 交互询问 | 脚本卡在 `overwrite?` | 用 `\cp -rf` |
-| 占 `<USER_DEV_CONTAINER>` | 用户自己要用 | 容器名用 `sglang-nightly-repro` 等 |
-| PYTHONPATH 覆盖 | `ModuleNotFoundError: tbe` | source set_env 后 **追加** PYTHONPATH |
-| 父类盖 `base_url` | 子类 port 无效 | synced utils：`getattr(cls,"base_url",None) or DEFAULT_URL_FOR_TEST` |
+| 无 proxy | `git pull` / `curl github.com` 超时 | `export http(s)_proxy=http://127.0.0.1:<PROXY_PORT>`；容器内跑测试时 **unset** |
+| `cp -rf` 交互询问 | 脚本卡在 `overwrite?` | 同步 test 包用 `\cp -rf` |
+| 占 `<USER_DEV_CONTAINER>` | 用户自己要用 | 容器名用 `sglang-nightly-repro` 等专用名 |
+| 父类盖 `base_url` | 子类设的 port 无效 | synced utils：`getattr(cls,"base_url",None) or DEFAULT_URL_FOR_TEST` |
 | 轮询误报 | 匹配到 HTTP `200 OK` 以为测完 | 结束条件用 `Ran N test` / `AssertionError` / `FAILED (` |
 | 本地镜像过旧 | 同 tag 但 Created 很旧 | 跑前 `docker pull` |
-| `max_running_requests` 被降 | 日志 `103 to 17`；TTFT 极高 | 回报必须注明 |
 | 长 case 耗时 | ~1h/次，retry 共 ~70min | 后台跑 + 正确轮询；对比用 `max_attempts=1` |
-| CI metrics artifact | 下载 401 | 公开 HTML / 用户粘贴 Serving Benchmark |
-| stash 盖掉 `environ.py` | `AttributeError: Envs has no attribute SGLANG_OPT_MAMBA_SKIP_DECODE_LOCK` | 从 `origin/main` 补回缺失 Env；勿用过旧 stash 整文件覆盖 |
-| 同机多 NPU job | `Communication_Error_Bind_IP_Port(EI0020)` port 16666 | 本地 repro 设 `HCCL_NPU_SOCKET_PORT_RANGE`（如 `36100-36150`）并换空闲 Phy 对 |
-| 本机 `127.0.0.1:1082` proxy 未起来 | `Connection refused`；`check_nightly.py` 失败 | 先直连试 `api.github.com`（有时通）；本机也可能是 `1080`；git 遇 HTTP2 framing 可加 `GIT_HTTP_VERSION=1.1`；容器内仍 **unset** proxy |
-| 1080p MM case 首跑冷启动 | 同参数 RUN1 TPOT 极差（如 130ms）、吞吐腰斩；RUN2/3 明显好转 | 至少 `RUNS=3`；分析时勿把首跑当稳态；CI 也可能落在差尾 |
+| CI metrics artifact | 下载 401 | 公开 HTML 搜 `AssertionError` / 用户粘贴 Serving Benchmark |
+| 本机 proxy 端口未起来 | `Connection refused`；`check_nightly.py` 失败 | 先直连试 `api.github.com`（有时通）；本机可能是别的端口；git 遇 HTTP2 framing 加 `GIT_HTTP_VERSION=1.1` |
+| 1080p MM case 首跑冷启动 | 同参数 RUN1 TPOT 极差（如 130ms）、吞吐腰斩；RUN2/3 明显好转 | 至少 `RUNS=3`；**勿把首跑当稳态**；CI 也可能落在差尾 |
+| 1024² MM case 同族冷启动 | RUN1 常 TPOT 炸（>51）或吞吐腰斩；RUN2 可能卡吞吐门；RUN3 才过 | 同上；并行时用不同 Phy 对 + 不同 port + 不同 `HCCL_NPU_SOCKET_PORT_RANGE` |
 | Full Test vs Nightly 门禁 | Full Test 里 `tpot=50` → `mean_tpot <= 51.0`；吞吐门 `baseline*0.98` | 报失败时写明是 **TPOT 上限** 还是 **吞吐下限**（AssertionError 文案不同） |
 | `pgrep -f run_repeat.sh` 自匹配 | wait 循环永不结束 | 用 `pgrep -f 'scripts/run_repeat.sh'` 或看 OUTDIR `finished=` / PID 文件 |
-| Phy 看似空闲但 HBM 残留/邻卡忙 | 首跑异常差、后续恢复 | 选 `npu-smi` 明确 “No running processes” 的成对 Phy；避开刚释放的卡再观察一轮 |
-| 1024² MM case 与 1080p 同族冷启动 | RUN1 常 TPOT 炸（>51）或吞吐腰斩；RUN2 可能卡在吞吐门（如 1515&lt;1587.6 / 313&lt;352.8）；RUN3 才过 | `RUNS=3`；并行时用**不同 Phy 对 + 不同 port + 不同 HCCL_NPU_SOCKET_PORT_RANGE**；勿把首跑当稳态回归 |
-| smoke 用 `inspect.getsource(setUpClass)` | 看到的是 `@retry` 包装的 `safe_setUpClass`，不是真实 `getattr` 行 | 直接 `rg` 同步后的 `test_npu_performance_utils.py`，或 `print(open(...).read())` |
-| GitHub API rate limit（proxy IP） | `API rate limit exceeded`；Ascend Full Test 查 job 失败 | 等 reset / 换直连；或 scrape job HTML + annotations；优先复用既有 triage 里的 job URL |
-| 用户 `dsb` 手动 PASS vs agent ×3 仅末次过 | 同镜像同机，但用户 WT 给 1024 case **本地加了** `warmup_requests=max_concurrency`（HEAD/CI 无）；实测 warmup=120 vs agent/CI warmup=1；再叠加并行 1080p 同机冷启动 | **不要**把交互 `dsb`（`<USER_DEV_CONTAINER>`）当 CI oracle。对比前 `git diff` / `git show HEAD:<case>`；日志对 `Starting warmup with N`；CI 保真用 HEAD 字段 + 专用容器 `run_repeat`；用户 warmup=120 的 PASS 偏暖、不可直接否定 agent |
-| 直接 `bash start_qwen36.sh` 起服务失败 | `Failed to init tbe` / `GEInitializeV2 failed`，进程 30s 内死 | 容器 PYTHONPATH 是**覆盖式**（如 `KimiK3/sglang-kimiK3/python:`）且没 source CANN。按 `npu-docker-pythonpath`：先 `source ascend-toolkit/set_env.sh` + `nnal/atb/set_env.sh`，再 `export PYTHONPATH=<sglang python>:${PYTHONPATH}` 追加；`bash -lc` 内执行 |
-| 起服务后请求 `Connection reset` / 进程自杀 | `Communication_Error_Get_Socket` HcclAllreduce，qwen3_vl forward 栈 | 该 Phy 对 NPU 间 link 通信故障，换一对空闲 Phy（如 8/9 → 4/5）重启 |
+| smoke 用 `inspect.getsource(setUpClass)` | 看到 `@retry` 包装的 `safe_setUpClass`，不是真实 `getattr` 行 | 直接 `rg` 同步后的 `test_npu_performance_utils.py`，或 `print(open(...).read())` |
+| GitHub API rate limit（proxy IP） | `API rate limit exceeded`；Ascend Full Test 查 job 失败 | 等 reset / 换直连；或 scrape job HTML + annotations；优先复用既有 triage 的 job URL |
+| 用户 `dsb` 手动 PASS vs agent ×3 仅末次过 | 同镜像同机，用户 WT 给 1024 case **本地加了** `warmup_requests=max_concurrency`（HEAD/CI 无）；实测 warmup=120 vs agent/CI warmup=1；再叠加并行 1080p 同机冷启动 | **不要**把交互 `dsb`（`<USER_DEV_CONTAINER>`）当 CI oracle。对比前 `git diff` / `git show HEAD:<case>`；日志对 `Starting warmup with N`；CI 保真用 HEAD 字段 + 专用容器 `run_repeat`；用户 warmup=120 的 PASS 偏暖、不可直接否定 agent |
 | 带 `--enable-lora` 起服务连环参数坑 | 依次报：speculative 不兼容 → `--max-lora-rank`/`--lora-target-modules` 缺失 → nargs 逗号报错 → KV 显存不足 | ① NPU 上去掉 speculative 参数（NEXTN 与 LoRA 冲突、NGRAM 仅 CUDA/CPU）② 补 `--max-lora-rank 64 --lora-target-modules q_proj k_proj v_proj o_proj`（**空格分隔**）③ `--mem-fraction-static` 提到 0.98 ④ `--max-total-tokens` 减小（如 100000） |
-| MoE deepep dispatch hang（silent） | sglang stdout 一直 `200 OK` 但 GSM8K tqdm 0/200 卡住；NPU 1 张 AICore 100%、另 3 张 0%；HTTP retry 雪崩 → AssertionError 0.0；plog 每 3 min `SynchronizeExecutedTask: report three minutes timeout!`，4 scheduler 卡同一 `stream_id=45` 的同 `task_id` | ① 立刻翻 `/root/ascend/log/run/plog/plog-<scheduler_pid>_*.log` 抓 `three minutes timeout` 模式 ② `py-spy dump --pid <sched_pid>` 抓 Python 栈（基本都会落在 `deep_ep/strategies/normal_strategy.py:250` `_intranode_dispatch`，locals `quant_type="int8" use_quant=True`） ③ 真要 native C 栈用 `kill -ABRT <pid>`（**别用 SIGQUIT**，Python 默认 handler 吞掉不出 core）；保留 1 个 core、其余 `rm -f` 释放 80+ GB ④ `--base-gpu-id N` 重启不绕开（已验）；常见诱因 `--moe-a2a-backend deepep --deepep-mode auto` + `DEEP_NORMAL_MODE_USE_INT8_QUANT=1` + Qwen3 MoE w8a8 ⑤ 详见 §9 |
 | `--max-attempts` 子测试改错基类 | 自己的 `max_attempts=1` 没生效，框架默认跑 2-3 次 | 改 `cls.max_attempts = 1`（**类属性**，不是 `setUpClass` 局部变量） |
 

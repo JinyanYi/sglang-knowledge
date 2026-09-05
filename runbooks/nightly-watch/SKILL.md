@@ -44,9 +44,10 @@ description: >-
 一键脚本（本机）：
 
 ```bash
-python3 personal/sglang-knowledge/agent-skills/nightly-npu-qwen36-35b/scripts/check_nightly.py
-python3 personal/sglang-knowledge/agent-skills/nightly-npu-qwen36-35b/scripts/check_nightly.py --date 2026-07-22
-python3 personal/sglang-knowledge/agent-skills/nightly-npu-qwen36-35b/scripts/check_nightly.py --run-id 30471373497
+# 相对 sglang-knowledge 仓库根目录
+python3 runbooks/nightly-watch/scripts/check_nightly.py
+python3 runbooks/nightly-watch/scripts/check_nightly.py --date 2026-07-22
+python3 runbooks/nightly-watch/scripts/check_nightly.py --run-id 30471373497
 ```
 
 ## 失败怎么读
@@ -71,14 +72,16 @@ Failures:
 
 ## 失败之后
 
-对每个失败的 `qwen3_6_35b_a3b` job，继续走本地复现 skill：
+对每个失败的 `qwen3_6_35b_a3b` job，继续走本地复现：
 
-`personal/sglang-knowledge/agent-skills/nightly-npu-local-repro/SKILL.md`
+**[`nightly-local-repro/SKILL.md`](../nightly-local-repro/SKILL.md)**
 
 ## Living doc
 
-这是活文档。triage / API / 脚本若有新坑或更好写法，**立刻改本 SKILL.md**（以及
-`nightly-npu-local-repro` / `daily task for agent.md`），不要只留在聊天里。
+这是活文档。triage / API / 脚本若有新坑或更好写法，**立刻改本 SKILL.md**，不要只留在聊天里。
+
+复现阶段的坑另归 [`nightly-local-repro/`](../nightly-local-repro/SKILL.md)
+（其踩坑账本顶部有归口表，按类别分流）。
 
 ## 踩坑账本
 
