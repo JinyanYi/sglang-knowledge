@@ -36,23 +36,27 @@ flowchart TB
     end
 ```
 
-| 组件 | Static | Dynamic |
-|------|--------|---------|
-| 主模型 | 权重 | — |
-| Mamba | 主池、投机中间态 | — |
-| KV | KV 池 | — |
-| 投机推理模型 | Draft 权重、 KV | Draft / Extend Graph |
-| CUDA Graph | — | 主模型 Decode Graph |
-| 多模态 | ViT 权重 | 图像 / Feature 缓冲 |
-| Prefill | — | 激活峰值 |
-| 通信 | — | HCCL 等 |
-| 内存预算 | — | `pre×(1−fraction)` 仅预留 |
+
+
+
+| 组件         | Static       | Dynamic                |
+| ---------- | ------------ | ---------------------- |
+| 主模型        | 权重           | —                      |
+| Mamba      | 主池、投机中间态     | —                      |
+| KV         | KV 池         | —                      |
+| 投机推理模型     | Draft 权重、 KV | Draft / Extend Graph   |
+| CUDA Graph | —            | 主模型 Decode Graph       |
+| 多模态        | ViT 权重       | 图像 / Feature 缓冲        |
+| Prefill    | —            | 激活峰值                   |
+| 通信         | —            | HCCL 等                 |
+| 内存预算       | —            | `pre×(1−fraction)` 仅预留 |
+
 
 ---
 
 ## 2. 启动时 KV 池怎么定（Concrete Example）
 
-调用链（[`scheduler.py#L862`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/scheduler.py#L862) — `init_model_worker()`）：
+调用链（`[scheduler.py#L862](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/managers/scheduler.py#L862)` — `init_model_worker()`）：
 
 ```
 init_model_worker()                    # scheduler
@@ -84,7 +88,7 @@ final tokens = min(KV tokens, max_total_tokens)    ← 若设置了 cap
 
 #### ① 测 `pre`（加载任何模型前）
 
-[`model_runner.py#L1282`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner.py#L1282) — `init_torch_distributed()` 末尾：
+`[model_runner.py#L1282](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner.py#L1282)` — `init_torch_distributed()` 末尾：
 
 ```python
 pre_model_load_memory = get_available_gpu_memory(
@@ -98,7 +102,7 @@ return pre_model_load_memory
 
 #### ② 动态预留 + `rest`（主模型 + draft 模型均加载完之后）
 
-[`model_runner_kv_cache_mixin.py#L85`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L85) — `_profile_available_bytes()`：
+`[model_runner_kv_cache_mixin.py#L85](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L85)` — `_profile_available_bytes()`：
 
 ```python
 # 此时主模型和 draft 模型均已加载，available_gpu_memory 比仅加载主模型时更小
@@ -121,7 +125,7 @@ return int(rest_memory * (1 << 30))
 
 #### ③ Mamba 投机中间态（从 `rest` 里扣预算）
 
-[`model_runner_kv_cache_mixin.py#L138`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L138) — `handle_max_mamba_cache()`，显式指定 `max_mamba_cache_size` 且开投机时：
+`[model_runner_kv_cache_mixin.py#L138](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L138)` — `handle_max_mamba_cache()`，显式指定 `max_mamba_cache_size` 且开投机时：
 
 ```python
 if has_spec_dec:
@@ -141,7 +145,7 @@ if has_spec_dec:
 
 #### ④ Mamba 主池（继续从 `rest` 里扣预算）
 
-[`model_runner_kv_cache_mixin.py#L219`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L219)：
+`[model_runner_kv_cache_mixin.py#L219](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L219)`：
 
 ```python
 mamba_state_memory = (
@@ -154,7 +158,7 @@ return total_rest_memory - mamba_state_memory
 
 #### ⑤ `rest` → KV token 数
 
-[`pool_configurator.py#L222`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/pool_configurator.py#L222) — `DefaultPoolConfigurator.calculate_pool_sizes()`：
+`[pool_configurator.py#L222](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/pool_configurator.py#L222)` — `DefaultPoolConfigurator.calculate_pool_sizes()`：
 
 ```python
 def calculate_pool_sizes(
@@ -165,7 +169,7 @@ def calculate_pool_sizes(
     return MemoryPoolConfig(max_total_num_tokens=max_total_num_tokens)
 ```
 
-入口在 [`_resolve_memory_pool_config()`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L1051)：
+入口在 `[_resolve_memory_pool_config()](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L1051)`：
 
 ```python
 available_bytes = self._profile_available_bytes(pre_model_load_memory)
@@ -175,7 +179,7 @@ config = configurator.calculate_pool_sizes(available_bytes, page_size)
 
 #### ⑥ `max_total_tokens` 上限（--max-total-tokens）
 
-[`model_runner_kv_cache_mixin.py#L952`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L952) — `_apply_token_constraints()`：
+`[model_runner_kv_cache_mixin.py#L952](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L952)` — `_apply_token_constraints()`：
 
 ```python
 user_limit = self.server_args.max_total_tokens
@@ -191,7 +195,7 @@ if user_limit is not None:
 return token_capacity
 ```
 
-[`_resolve_memory_pool_config()`](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L1063) 里调用：
+`[_resolve_memory_pool_config()](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/model_executor/model_runner_kv_cache_mixin.py#L1063)` 里调用：
 
 ```python
 constrained = self._apply_token_constraints(config.max_total_num_tokens)
@@ -219,28 +223,32 @@ if constrained != config.max_total_num_tokens:
 
 #### Case A：实测（fraction = **0.8**）→ 479488 tokens
 
-| 步骤 | 计算 | 数值 |
-|------|------|------|
-| ① 加载前空闲 | | **60.77 GB** |
-| ② 两模型加载后空闲 | | **26.09 GB** |
-| ③ 动态预留 | 60.77 × (1−0.8) | **12.15 GB** |
-| ④ 预算起点 | 26.09 − 12.15 | **13.94 GB** |
-| ⑤ Mamba 中间态 | | **7.55 GB** |
-| ⑥ Mamba 主池 | | **1.97 GB** |
-| **⑦ KV 可用预算** | 13.94 − 7.55 − 1.97 | **≈ 4.42 GB** |
-| ⑧ KV 池 | 479488 tokens × 10240 | **≈ 4.57 GB** |
+
+| 步骤            | 计算                    | 数值            |
+| ------------- | --------------------- | ------------- |
+| ① 加载前空闲       |                       | **60.77 GB**  |
+| ② 两模型加载后空闲    |                       | **26.09 GB**  |
+| ③ 动态预留        | 60.77 × (1−0.8)       | **12.15 GB**  |
+| ④ 预算起点        | 26.09 − 12.15         | **13.94 GB**  |
+| ⑤ Mamba 中间态   |                       | **7.55 GB**   |
+| ⑥ Mamba 主池    |                       | **1.97 GB**   |
+| **⑦ KV 可用预算** | 13.94 − 7.55 − 1.97   | **≈ 4.42 GB** |
+| ⑧ KV 池        | 479488 tokens × 10240 | **≈ 4.57 GB** |
+
 
 （⑦ 与 ⑧ 的微小差异来自 mamba_cache_per_req 内部精度取整。）
 
 #### Case B：若 fraction = **0.9**（同一机器，只改 fraction）
 
-| 步骤 | 计算 | 数值 |
-|------|------|------|
-| ③ 动态预留 | 60.77 × (1-0.9) | **6.08 GB** |
-| ④ 预算起点 | 26.09 − 6.08 | **20.01 GB** |
-| ⑤⑥ Mamba | 同左 | **7.55 + 1.97 = 9.52 GB** |
-| **⑦ KV 可用预算** | 20.01 − 9.52 | **≈ 10.49 GB** |
-| ⑧ KV 池（估） | 10.49×2³⁰÷10240 | **≈ 1.10M tokens** |
+
+| 步骤            | 计算              | 数值                        |
+| ------------- | --------------- | ------------------------- |
+| ③ 动态预留        | 60.77 × (1-0.9) | **6.08 GB**               |
+| ④ 预算起点        | 26.09 − 6.08    | **20.01 GB**              |
+| ⑤⑥ Mamba      | 同左              | **7.55 + 1.97 = 9.52 GB** |
+| **⑦ KV 可用预算** | 20.01 − 9.52    | **≈ 10.49 GB**            |
+| ⑧ KV 池（估）     | 10.49×2³⁰÷10240 | **≈ 1.10M tokens**        |
+
 
 0.9 时 KV 预算 ~10.5G，约是 0.8 时的 **2.4 倍**。
 
@@ -278,20 +286,24 @@ flowchart TB
     POST --> PM --> PKV --> FREE
 ```
 
+
+
 ### 2.3 参考数值（Qwen3.6-35B-A3B，TP=2，NPU，fraction=0.8）
 
-| 含义 | 代码变量 | 值 |
-|------|---------|-----|
-| ① 加载前空闲 | `pre_model_load_memory` | 60.77 GB |
-| ② 两模型加载后空闲 | `available_gpu_memory` | 26.09 GB |
-| ③ 动态预留 | `pre_model_load_memory × (1−f)` | 12.15 GB |
-| ④ 预算起点 | `rest_memory`（扣③后） | 13.94 GB |
-| ⑤ Mamba 中间态 | — | 7.55 GB |
-| ⑥ Mamba 主池 | — | 1.97 GB |
-| ⑦ KV 可用预算 | `rest_memory`（扣⑤⑥后） | **≈ 4.42 GB** |
-| ⑧ KV 池（实分配） | — | **479488 tokens ≈ 4.57 GB** |
-| 池分配后剩余 free | — | **~12 GB** |
-| NPU graph | — | **~1.3 GB** |
+
+| 含义          | 代码变量                            | 值                           |
+| ----------- | ------------------------------- | --------------------------- |
+| ① 加载前空闲     | `pre_model_load_memory`         | 60.77 GB                    |
+| ② 两模型加载后空闲  | `available_gpu_memory`          | 26.09 GB                    |
+| ③ 动态预留      | `pre_model_load_memory × (1−f)` | 12.15 GB                    |
+| ④ 预算起点      | `rest_memory`（扣③后）              | 13.94 GB                    |
+| ⑤ Mamba 中间态 | —                               | 7.55 GB                     |
+| ⑥ Mamba 主池  | —                               | 1.97 GB                     |
+| ⑦ KV 可用预算   | `rest_memory`（扣⑤⑥后）             | **≈ 4.42 GB**               |
+| ⑧ KV 池（实分配） | —                               | **479488 tokens ≈ 4.57 GB** |
+| 池分配后剩余 free | —                               | **~12 GB**                  |
+| NPU graph   | —                               | **~1.3 GB**                 |
+
 
 要点：
 
@@ -303,11 +315,13 @@ flowchart TB
 
 ## 3. 运行时：PrefillAdder 在哪判断？
 
-| 阶段 | 文件 | 函数 |
-|------|------|------|
-| 调度入口 | `scheduler.py` | `get_next_batch_to_run()` → `get_new_batch_prefill()` |
-| 组 batch | `scheduler.py` | `_get_new_batch_prefill_raw()` |
-| 准入判断 | `schedule_policy.py` | `PrefillAdder.add_one_req()` |
+
+| 阶段      | 文件                   | 函数                                                    |
+| ------- | -------------------- | ----------------------------------------------------- |
+| 调度入口    | `scheduler.py`       | `get_next_batch_to_run()` → `get_new_batch_prefill()` |
+| 组 batch | `scheduler.py`       | `_get_new_batch_prefill_raw()`                        |
+| 准入判断    | `schedule_policy.py` | `PrefillAdder.add_one_req()`                          |
+
 
 ### 3.1 剩余 token 预算
 
@@ -321,21 +335,25 @@ rem_total_tokens = pool.available_size() + tree_cache.evictable_size() - offset
 
 ### 3.2 返回值
 
-| 结果 | 含义 | 调度器 |
-|------|------|--------|
-| `CONTINUE` | 还能加 | 继续扫队列 |
-| `NO_TOKEN` | KV 池不够 | `batch_is_full=True`，**break** |
-| `OTHER` | 触达 `prefill-max-requests` / `max-prefill-tokens` 等 | **break** |
+
+| 结果         | 含义                                                 | 调度器                            |
+| ---------- | -------------------------------------------------- | ------------------------------ |
+| `CONTINUE` | 还能加                                                | 继续扫队列                          |
+| `NO_TOKEN` | KV 池不够                                             | `batch_is_full=True`，**break** |
+| `OTHER`    | 触达 `prefill-max-requests` / `max-prefill-tokens` 等 | **break**                      |
+
 
 `get_next_batch_to_run` **优先 prefill**；`get_new_batch_prefill()` 返回 `None`（含 `batch_is_full`）才 decode。
 
 ### 3.3 日志字段对照
 
-| 日志 | 来源 | 与 PrefillAdder |
-|------|------|-----------------|
+
+| 日志                 | 来源                       | 与 PrefillAdder                           |
+| ------------------ | ------------------------ | ---------------------------------------- |
 | `full token usage` | `pool_stats_observer.py` | 同一 KV 池的 `used/size`，Adder 用 `available` |
-| `#queue-req` | scheduler | `waiting_queue` 长度 |
-| `#running-req` | scheduler | `running_batch` 长度 |
+| `#queue-req`       | scheduler                | `waiting_queue` 长度                       |
+| `#running-req`     | scheduler                | `running_batch` 长度                       |
+
 
 ---
 
@@ -354,12 +372,14 @@ disable-radix-cache          → Mamba ratio=1，evictable=0
 
 ### 4.2 日志摘要
 
-| 阶段 | 现象 |
-|------|------|
-| Prefill | 1 + 12×7 + **9** = **94** 路进 running |
-| 最后一轮 prefill | 只加了 **9** 条（不是 12），`full token usage: 0.70` |
-| Decode | **#running-req: 94**，**#queue-req: 28** 一直不降 |
-| 池子 | `#full token: 347392`，`usage: 0.72` → 池约 **483k tokens** |
+
+| 阶段           | 现象                                                       |
+| ------------ | -------------------------------------------------------- |
+| Prefill      | 1 + 12×7 + **9** = **94** 路进 running                     |
+| 最后一轮 prefill | 只加了 **9** 条（不是 12），`full token usage: 0.70`              |
+| Decode       | **#running-req: 94**，**#queue-req: 28** 一直不降             |
+| 池子           | `#full token: 347392`，`usage: 0.72` → 池约 **483k tokens** |
+
 
 ### 4.3 根因链
 
@@ -382,12 +402,14 @@ batch_is_full → 不再组 prefill → decode@94
 
 ### 4.4 与稳定 case 对比
 
-| | 3.5k 失败 (0.8) | 3.5k 稳定 (0.9) | 3.5k 稳定 (0.9 + max-total-tokens 659840) |
-|--|-----------------|-----------------|------------------------------------------|
-| KV 池 | ~479k tokens | ~1100k tokens | ~660k tokens |
-| Prefill 完成 | 94 / 122 | 122 / 122 | 122 / 122 |
-| Decode | @94，queue 28 | @122 | @122 |
-| 剩余 free | ~12 GB | ~6 GB | ~10 GB |
+
+|            | 3.5k 失败 (0.8) | 3.5k 稳定 (0.9) | 3.5k 稳定 (0.9 + max-total-tokens 659840) |
+| ---------- | ------------- | ------------- | --------------------------------------- |
+| KV 池       | ~479k tokens  | ~1100k tokens | ~660k tokens                            |
+| Prefill 完成 | 94 / 122      | 122 / 122     | 122 / 122                               |
+| Decode     | @94，queue 28  | @122          | @122                                    |
+| 剩余 free    | ~12 GB        | ~6 GB         | ~10 GB                                  |
+
 
 单条准入估算（output 1500）：
 
@@ -412,13 +434,15 @@ batch_is_full → 不再组 prefill → decode@94
 
 ## 6. 调参速查
 
-| 目标 | 手段 |
-|------|------|
-| 增大 KV 池 | ↑ `mem-fraction-static`；可选 `max-total-tokens` cap |
-| 更多路 decode | 查 `max-mamba-cache-size ÷ ratio`（radix/extra_buffer 影响 ratio） |
-| 每轮 prefill 条数 | `prefill-max-requests` |
-| 单轮 prefill token | `max-prefill-tokens` |
-| 准入逻辑代码 | `schedule_policy.py` → `PrefillAdder` |
+
+| 目标               | 手段                                                            |
+| ---------------- | ------------------------------------------------------------- |
+| 增大 KV 池          | ↑ `mem-fraction-static`；可选 `max-total-tokens` cap             |
+| 更多路 decode       | 查 `max-mamba-cache-size ÷ ratio`（radix/extra_buffer 影响 ratio） |
+| 每轮 prefill 条数    | `prefill-max-requests`                                        |
+| 单轮 prefill token | `max-prefill-tokens`                                          |
+| 准入逻辑代码           | `schedule_policy.py` → `PrefillAdder`                         |
+
 
 ---
 

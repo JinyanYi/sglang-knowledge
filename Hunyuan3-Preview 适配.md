@@ -317,7 +317,7 @@ TP（Tensor Parallelism，张量并行）会把权重矩阵切分到多张卡上
 | **topk_weights**             | **路由权重**      | **4.97** | **14.03** | **−65% ✗** |
 
 
-**结论更进一步**：expert 内部的所有矩阵乘法（gmm1、gmm2）和激活函数（swiglu）全部正确。唯一有问题的是 **`topk_weights`**（路由权重）——NPU 算出来的权重只有 GPU 的 35%！
+**结论更进一步**：expert 内部的所有矩阵乘法（gmm1、gmm2）和激活函数（swiglu）全部正确。唯一有问题的是 `**topk_weights`**（路由权重）——NPU 算出来的权重只有 GPU 的 35%！
 
 ---
 
@@ -407,11 +407,6 @@ NPU 路径的意图是正确的：当需要 renormalize 时，不想让 NPU op �
 
 topk_weights = topk_weights.to(torch.float32)
 
-# When renormalize=True, we pass routed_scaling_factor=1 to the op (no in-op
-# scaling), so the op returns L1-normalized weights (sum=1).
-# The GPU path (biased_topk_impl) then multiplies by routed_scaling_factor
-# after renorm when apply_routed_scaling_factor_on_output=True.
-# Mirror that behavior here.
 if (
     renormalize
     and topk_config.apply_routed_scaling_factor_on_output
@@ -466,10 +461,12 @@ if (
 Hy3-preview  gpqa_diamond  198  895.246s  TTFT=14435ms  TPOT=43.1ms  Thpt=22.71tok/s
 ```
 
-| 指标 | 修复前 NPU | 修复后 NPU | 官方 GPU baseline |
-|------|-----------|-----------|-----------------|
-| GPQA Diamond 精度 | 17.5%（40题）| **87.88%**（198题）| 87.2% |
-| 死循环比例 | ~35% 题目 | 0 | 0 |
+
+| 指标              | 修复前 NPU    | 修复后 NPU          | 官方 GPU baseline |
+| --------------- | ---------- | ---------------- | --------------- |
+| GPQA Diamond 精度 | 17.5%（40题） | **87.88%**（198题） | 87.2%           |
+| 死循环比例           | ~35% 题目    | 0                | 0               |
+
 
 NPU 修复后精度（87.88%）已超过官方 GPU baseline（87.2%），问题彻底解决。
 
