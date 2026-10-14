@@ -1,0 +1,171 @@
+## 11. 2026-09-08/09 七机 3P4D + CPP/PP 脚本复盘
+
+### 11.1 范围、当前输入和证据边界
+
+本节来自这两天脚本修改对话、用户贴出的七机脚本和本地源码核查。这里用户所说的“关闭 CPP”指取消 pipeline parallel（PP 设为 1）；本脚本未显式开启 attention context parallel，不要混淆 CPP/PP 与 CP。
+
+- 机器以节点编号脱敏记录：P 为 34/37/38，D 为 39/40/42/43；35 的权重丢失，因此不参加启动。权重映射里保留 35 并不表示使用它。
+- 最新贴出版本：P `nnodes=3, TP16, PP3, DP2, partition=31,31,31`，attention TP=8、DeepEP EP=16；D `nnodes=4, TP64, PP1, DP4`，attention TP=16、DeepEP EP=64。
+- P 显式禁图；D 保留 `--cuda-graph-bs 16`；两侧 DeepEP auto、Ascend PD transfer，未配置 DSPARK 算法。实际捕图和后端仍应以运行日志为准。
+- P/D 都启用了 `--enable-dp-attention --enable-dp-lm-head`，shared-experts/dense-MLP attention-TP 开关也在。P/D 都已添加 `--skip-server-warmup`。
+- P HTTP=31001，D HTTP=31002，bootstrap=18998，dist-init 分别为 P 首节点:15001、D 首节点:15002。Router 是独立进程；曾出现本地 8009、另一份远端 18077 两种 router port，以实际启动文件/监听端口为准。
+- `MODEL_PATH` 和 `SGLANG_PYTHON_PATH` 允许环境覆盖；代码路径还存在自动 fallback。相同脚本不保证导入相同 checkout，必须核对进程实际使用的源码及权重配置。
+- 本节未重新运行七机 NPU 测试；“修复已推送”“参数合法”“服务 ready”“单次 curl 成功”“精度/连续请求通过”是不同级别的证据，不能互相替代。
+
+### 11.2 能不能直接改成 P 的 PP1 / TP48？
+
+在现有 `--moe-a2a-backend deepep --deepep-mode auto` 和 896 routed experts 配置下，不能只改这两个参数就认为可运行。
+
+```text
+P 使用三机，每机 16 卡：TP48 × PP1 = 48 卡，设备数量本身匹配。
+保留 DP2：attention TP = 48 / 2 = 24，attention 分片也会改变。
+改成 DP3：attention TP = 48 / 3 = 16，TP/DP 整除检查能通过。
+但 DeepEP 自动令 EP = TP = 48：896 % 48 = 32，专家无法均分。
+```
+
+DP3 不会把 EP48 变成 EP16；显式写 `--ep-size 16` 也不能绕过当前 DeepEP 的自动调整。此前 4P3D 尝试在 Decode TP48/EP48 上已经遇到过同类限制，改回 3P4D 是为了让 EP16 和 EP64 都整除 896。现在把 TP48 放到 Prefill，只是把同一限制移到 P。
+
+没有在本次核查中验证过专家 padding、其他 A2A 后端或 TP-MoE 替代路径。不能把删掉 DeepEP 当成已经验证的精度/性能等价方案；它还会改变 MoE 权重分片及通信约束。
+
+无 PP 的可选对照方案（需要重新分配 P 节点，并非原七机脚本原样可用）：
+
+- 临时 2P4D，剩一台闲置：P 两机 `TP32 / PP1 / DP2`，D 仍四机 `TP64 / PP1 / DP4`，两边保留 DP attention、DP LM head 和 DeepEP。此时两边 attention TP 都为 16，EP32/64 均整除 896。P 的完整模型分到两机，显存压力比原三机方案大，需验证加载容量、传输兼容性、精度和稳定性。
+- 若必须三台 P 的 48 卡全用于同一个 PP1 DeepEP 实例，当前参数组合存在上述专家整除障碍，需要另行设计并验证专家布局/后端；本节没有给出已验证的可用配方。
+- 切 PP1 时清除 `SGLANG_PP_LAYER_PARTITION`，同步修改 nnodes/node-rank/节点列表及日志描述，不要只改 echo。Router 在 P 首节点及服务端口不变时不因 PP1 本身需要换地址。
+
+### 11.3 已遇到的问题及处理
+
+#### A. 集群启动等待 worker 端口超时
+
+37/38 等待首节点 worker 端口超时，用户报告停用防火墙后启动继续推进。当前分布式初始化使用 P 首节点:15001，相关 DP 握手端口曾定位为 15014（偏移 13）；不能只检查 HTTP 31001/31002。后续应检查真实启动日志中的监听地址、端口、路由和访问规则，按需放行；历史“停用后推进”不等于推荐长期关闭防火墙。
+
+#### B. AttnResidual 收到 [8,31,7168]，本地仅有 [8,8,7168]
+
+用户最终确认：37 和 43 的模型 `attn_res_block_size` 曾调试改成 2，忘记恢复；38 仍为 12。这是已经明确的配置错误。
+
+```text
+partition=31,31,31
+37 是 PP stage 1，end_layer=62：ceil(62/2)=31，发送 bank 宽度 31。
+38 是 PP stage 2，end_layer=93：ceil(93/12)=8，本地容量 8。
+copy 时 31 -> 8，正好对应实际报错。
+```
+
+全部为 12 时，stage 0 发送 bank 宽度 3、stage 1 发送 6、stage 2 分配 8。这里 bank 是 attention residual snapshot，并非 KV cache。43 虽然属于 D、没有 P 的这段 PP 收发，也必须恢复训练对应的配置值；参数可能仍能加载但数值语义已经改变。
+
+处理：把 37、43 恢复成 12，并核对所有 P/D 节点实际权重目录的配置；完整重启相关分布式实例以重新加载配置。对话未提供这次七机恢复后的完整精度验收结果。34 的 Gloo `Connection closed by peer` 是这轮 peer 崩溃后的连带报错。
+
+纠正：先前把该错误归因于 partition 不一致、或者把 31 当作 stage 层数误分配，是未经验证的推断。用户确认各节点均为 31,31,31 后，block_size=2 已精确解释 31 的来源。也没有证据证明“此前 curl 成功一定因为旧进程还保留 12”；那只是可能解释，需当时日志才能确认。
+
+#### C. TP16 / DP3 不满足整除约束
+
+三台机器不是 DP 必须取 3 的理由。启用 DP attention、未启 CP 时，attention TP=`TP/DP`，要求 `TP % DP == 0`。TP16/PP3 是三个 16 卡 stage；DP 在各 stage 的 TP 组内划分，不额外乘出一批设备。
+
+所以 TP16 下，DP1/2/4/8/16 仅从这条整除规则看合法，DP3 不合法；其他 attention-head 等约束仍需满足。DP1 的 attention TP=16，DP2 的 attention TP=8，两者并不保证数值路径相同。
+
+#### D. DP1 时两个 DP 开关被自动关闭，遗漏了已有修复
+
+用户指出此前已经确认“关闭 DP attention 会有精度问题”。核查发现，原 `pdcpp` 的 `_data_parallelism_defaults` 在 DP1、非 scale 时无条件返回两个 False，即使命令行明确开启。
+
+大分支 `k3cppp` 已有提交 `72f575f93d`（`enable dp attn even when dp=1`），后续整理后等价条件是：
+
+```python
+def _data_parallelism_defaults(view: Any) -> dict:
+    if (
+        view.dp_size == 1
+        and view.ep_join_mode != "scale"
+        and not view.enable_dp_attention
+    ):
+        return {"enable_dp_attention": False, "enable_dp_lm_head": False}
+    return {}
+```
+
+本次已把该逻辑补到 `pdcpp`，提交 `b54f247f18c7ae5f0013c300e898e615fb064f34`（`fix: preserve explicit DP attention when dp size is one`），并推送 `origin/pdcpp`。合入了推送时远端已有的历史，没有 force push。验证包括源码语法、隔离函数的 16 组 DP/scale/attention/LM-head 组合和 diff 检查；不是七机 NPU 精度验证。
+
+DP1 的目标启动参数仍需显式写：
+
+```bash
+--tp-size 16 --pp-size 3 --dp-size 1 \
+--enable-dp-attention --enable-dp-lm-head
+```
+
+缺补丁时仅加 flag 不够，因为会被强制关闭；补丁不会替用户自动打开没传的 flag。前面对话曾错误建议删这两个 flag，并修改过 Windows 的 `6pd.sh`；继续用那份文件时必须补回。最新本节输入脚本是 DP2 且两个 flag 都在，不要把它与中途 DP1 文件混为一谈。
+
+截至本次记录，<NODE_A> 的宿主源码 checkout 读到 `k3cppp@dbfe6e937d`；这不表示七机实验节点已更新到 `pdcpp` 修复，也不证明服务进程使用该 checkout。启动环境/PYTHONPATH/容器导入路径和提交号仍需实际核对。
+
+#### E. DP3 后 chunked prefill 与 page size 不对齐
+
+当前参数处理先把 CLI 的 `chunked_prefill_size` 按 DP 数做整数除法，再验证它能否被 page size 整除。例如 4096 在 DP3 下变成 1365，常见 page size 下不对齐。
+
+```text
+建议选 CLI chunked-prefill-size = DP × page_size × 正整数。
+例：DP3、page_size 为 128 或 256 时，CLI 6144 -> 每组 2048，满足对齐。
+```
+
+实际 page size 未在这轮对话中得到确认，上述 6144 示例有此前提。不要为了绕过错误任意改 page size。修正 chunk 对齐不解决 TP48/EP48 专家整除问题。DP2/4096 则会变成每组 2048；DP1 保持 4096，仍需检查实际 page size 和容量。
+
+#### F. PD disaggregation warmup 耗时长
+
+正确完整参数是 `--skip-server-warmup`，不是 `--skip-serve-warmup`。本地 `_wait_and_warmup` 在该开关开启时跳过 `_execute_server_warmup`，包括日志 `Start of pd disaggregation warmup ...` 对应的请求。
+
+这条 PD warmup 用 4 个 input token、最多生成 8 token，并向各 DP rank 发请求；使用 `FAKE_BOOTSTRAP_HOST`。不要把它当成真实 P->D 跨实例 KV 传输验收。跳过它不会跳过加载权重、设备/通信初始化或捕图，也不会修复真正的卡死；首次真实请求仍可能承担编译/懒初始化耗时。最新贴出脚本两侧已经加入此参数。
+
+#### G. 配置一致性、脚本漂移与精度结论
+
+- `${SGLANG_PP_LAYER_PARTITION:-31,31,31}` 允许继承旧环境值；需要检查最终生效值。此前曾临时改为 24,36,33，后恢复 31,31,31，但 block_size 配置错误才是已确认的 shape mismatch 原因。
+- 当前源码会跨 PP 传递 residual bank 与 stream head，不能仅凭非 12 边界就判定 PP 无法工作，也不能凭源码静态分析保证 NPU 精度。24,36,33 可作为对齐 block 边界的对照实验，尚未在本次七机实验中验证；不是确定修复。
+- 之前单条 curl 成功不代表多请求、全部 DP 路由、P->D 状态传输和长上下文精度均已通过。恢复模型配置、补 DP1 flag 修复后，需要固定输入/采样参数对照文本、token/logprob，并复测连续请求。
+- §10 的四机混部 DeepEP auto/normal 实验有其特定拓扑和模式，不应直接套用为本七机 P-only/D-only 配方的已验证根因。若再出现 warmup 或后续请求挂起，需采集当前各 rank 的日志再定位。
+
+### 11.4 接下来更改脚本时的检查顺序
+
+1. 固定实验方案：保留三机 P 的 PP3，或改为经过资源评估的两机 P/PP1；不要直接把现有三机 P 改成 DeepEP TP48。
+2. 所有参与节点检查真实 model path、`attn_res_block_size=12`、源码导入路径/提交、DeepEP/kernel 版本。路径展示使用 `<USER>` / `<MODEL_PATH>` 等占位符。
+3. DP1 时保留两个 DP flag，并确认代码含上述 `pdcpp` 修复；DP2 也保留两个 flag。保持 shared-experts/dense-MLP attention-TP 开关与已验配方一致。
+4. 检查 TP/DP/head/EP 整除、CLI chunk 经 DP 分摊后的 page 对齐、nnodes/node-rank 与实际卡数。PP1 时 unset partition；PP>1 时统一最终 partition。
+5. 核对端口、网卡和可达性；P/D/router 使用同一组服务端口和 bootstrap 设置。按需要使用 skip-server-warmup，但另做真实 PD 请求测试。
+6. 同步脚本并完整重启受影响的分布式实例，先验证同一固定请求，再验证连续请求和精度。记录通过的具体提交、完整参数、输入、输出和日志。
+
+源码依据（本次本地 `pdcpp@b54f247f18` 核查，路径相对仓库根目录）：`python/sglang/srt/arg_groups/overrides.py`（DP1 保留显式 DP flag、DeepEP EP=TP）；`arg_groups/parallel_hook.py`（TP/DP 与 chunk 分摊）；`arg_groups/validation_hook.py`（page 对齐）；`layers/moe/token_dispatcher/deepep.py`（专家/组大小整除）；`models/kimi_k3.py` 与 `layers/attn_residual.py`（PP residual bank）；`entrypoints/http_server.py`（warmup）。后三组简写路径均位于 `python/sglang/srt/` 下。
+
+### 11.5 PR #38531 的六机无 CPP 目标与现状（2026-09-09 核查）
+
+用户补充的目标脚本来源：[PR #38531 Files changed](https://github.com/sgl-project/sglang/pull/38531/files)。本次读取 head `2526297b77ebb124ee709712c60629479ad3c113`，测试文件是 `test/registered/npu/accuracy/kimi_k3/test_npu_kimi_k3_w4a8_2p4d_gpqa.py`。
+
+**当前 PR 还不是无 CPP 配方**：P 参数是 `TP16 / PP2 / DP2 / nnodes2`，P env 设置 `SGLANG_PP_LAYER_PARTITION=48,45`；D 是 `TP64 / PP1 / DP4 / nnodes4`。这是六台模型服务机器（2P4D），workflow 另配置 `router_size=1`；手工运行时 router 可放现有机器，不能把 CI router 资源计数误认为模型卡数。
+
+为了成为无 CPP 的 2P4D，测试文件中的最小必要调整为：
+
+```diff
+ KIMI_K3_W4A8_2P4D_PREFILL_ENVS = {
+     # 其他环境变量保持原配置
+-    "SGLANG_PP_LAYER_PARTITION": "48,45",
+ }
+
+ KIMI_K3_W4A8_2P4D_PREFILL_ARGS = [
+     # 其他参数保持原配置
+     "--tp-size",
+-    16,
++    32,
+     "--pp-size",
+-    2,
++    1,
+     "--dp-size",
+     2,
+     "--nnodes",
+     2,
+ ]
+```
+
+这是示意 diff，不是已提交补丁。本次只核查 PR 并记录建议，未修改或推送该 PR 分支。
+
+- P 两台依旧使用 32 卡，但从 TP16×PP2 改成 TP32×PP1；跨机通信布局改变。两侧保留 DP attention/DP LM head/shared-experts/dense-MLP attention-TP 开关，D 不因取消 P 的 PP 必须调整。
+- 修改后 P attention TP=32/2=16、EP32；D attention TP=64/4=16、EP64。896 分别除以 32 和 64 为 28 和 14；没有 TP48 的专家整除错误，也不走 DP1 默认关闭分支。
+- P 的 CLI chunk=4096，在 DP2 下变成 2048；对于 page_size=128/256 合法。该 PR 没显式设置 page_size，应确认模型/后端解析后的值，不能仅凭默认猜测。
+- 若要复现昨天跳过 PD warmup 的行为，可在 P/D args 分别追加 `"--skip-server-warmup"`；这项不是取消 PP 的必要条件。当前 PR 测试文件没有该参数。
+- P/D 实际模型配置仍必须恢复/保持 `attn_res_block_size=12`；PP1 不会让错误的 block size 自动变正确。
+- PR 的 D env 保留 `SGLANG_ENABLE_SPEC_V2=1`、`SGLANG_RAGGED_VERIFY_MODE=static`，并传了 `--linear-attn-verify-backend triton`，但未传 speculative algorithm/draft model；不能据这些 env 就认定启用了 DSPARK。若目标是干净的无投机对照，启动环境应避免继承其他投机参数，并可清理这些未使用设置。
+- 手工运行时还要 unset 启动 shell 残留的 `SGLANG_PP_LAYER_PARTITION`；只从 Python env 字典删除 key 不代表启动框架必然清除了父进程环境。
+- `accuracy=0.935` 是测试声明的阈值，不是本次测得结果。本次只完成参数/源码核查，没有六机加载、PD 传输、GPQA 或连续请求的验证结果。
+
+额外注意：该 PR 同时对 `.github/workflows/nightly-test-npu.yml` 删除了 261 行，把多组 nightly 任务裁剪为只跑该用例。临时专测时可以理解这个目的，但它并非“新增一个六机用例”的最小修改；若按常规新增用例合入，应保留原 nightly jobs/矩阵并增量添加新项。该 workflow 还使用 `install_sglang_from_source: false`，实际服务源码/镜像必须另行核对，不能因为测试文件来自 PR 就假定服务已经包含个人分支修复。
+[ARCHIVE_SEGMENT_END]

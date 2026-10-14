@@ -4,8 +4,11 @@
 > 切点怎么选、裁几层、起服务用什么参数 →
 > [`runbooks/k3-pd-pp/pp-partition-and-cut.md`](../../runbooks/k3-pd-pp/pp-partition-and-cut.md)
 > 与 [`runbooks/k3-pd-pp/SKILL.md`](../../runbooks/k3-pd-pp/SKILL.md)。
+> K3 项目导航（不搬动本文）→ [`projects/kimi-k3/`](../../projects/kimi-k3/README.md)。
 >
 > 审计基准：分支 `0728_dspark` @ `e0263a9`（2026-08）。代码位置以该分支为准。
+> 这不是后续 DSparkPP addon 的基准；后者的源码结论见
+> [`kimi-k3-dspark-pp-pd.md`](./kimi-k3-dspark-pp-pd.md)，且仍须区分源码核对与端到端实测。
 
 ---
 
@@ -28,12 +31,15 @@
 
 **`attn_res_block_size=12` 不是普通 Transformer residual。**
 它是 K3 特有的 **block residual**：每 12 层才做一次 residual 归并。
-这直接决定了 PP 切点必须落在 12 的倍数上（见 runbook 的切点表）。
+在本页审计的旧版首发裁层/冒烟策略中，切点优先落在 12 的倍数，以减少跨 block
+边界变量；这是一条保守操作策略，不是所有后续版本都不可违反的执行硬约束。
+非对齐分区（例如后续的 `31,31,31`）须以当时分支的静态检查、配置和故障记录为准。
 
 **没有 DSA 跨 stage 元数据。**
 不像 DeepSeek-V3 的 DSA 需要跨 PP stage 传 `topk_indices`；
 K3 的 KDA cache / MoE 都是**逐层本地状态**，跨 stage 只需传 activation + residual。
-→ **断点没有特殊的架构障碍**，唯一的约束就是 `attn_res_block_size=12` 的对齐。
+→ **断点没有额外的 DSA 元数据障碍**；是否采用非对齐切点，取决于该版本对
+`attn_res` buffer 的实现与验证，而不是单凭本页旧版策略下结论。
 
 ---
 
@@ -59,7 +65,7 @@ K3 的 KDA cache / MoE 都是**逐层本地状态**，跨 stage 只需传 activa
 
 | 项 | 结论 | 为什么 |
 |---|---|---|
-| **DSPARK / speculative** | 首版 CPP **关** | 现网开着，但 PP+spec 变量多，且部分路径**强制 draft 在 pp0** |
+| **DSPARK / speculative** | 本审计基准的首版 CPP **关** | 用来缩小变量集；这不是后续 DSparkPP addon 不支持 PP 的结论，另见 [`kimi-k3-dspark-pp-pd.md`](./kimi-k3-dspark-pp-pd.md) 的独立源码基准与实测边界 |
 | **PD-Multiplexing (`enable_pdmux`)** | **不要开** | 断言 `pp_size==1` 且不能 disagg。要 PD 就用真正的 `--disaggregation-mode prefill/decode` |
 | **PD disaggregation + PP** | 高风险，先裁层 + 小 pp | Ascend/Mooncake KV 传输路径有 `pp_size > 1` 分支（按当前 PP stage 的层切 KV）。**框架声称支持，但未充分验证** |
 | **DeepEP** | 可保留 | 与 TP/EP 同开；**PP 只传 activation，EP 仍在 stage 内**。OOM 时再降 `HCCL_BUFFSIZE` |
@@ -84,4 +90,5 @@ K3 的 KDA cache / MoE 都是**逐层本地状态**，跨 stage 只需传 activa
 
 - [`runbooks/k3-pd-pp/pp-partition-and-cut.md`](../../runbooks/k3-pd-pp/pp-partition-and-cut.md) — 切点与裁层怎么定
 - [`runbooks/k3-pd-pp/SKILL.md`](../../runbooks/k3-pd-pp/SKILL.md) — 起服步骤
+- [`kimi-k3-dspark-pp-pd.md`](./kimi-k3-dspark-pp-pd.md) — 后续 DSparkPP 的对象所有权与 partial-load 源码结论
 - [`debugging/pp-divergence/`](../../debugging/pp-divergence/SKILL.md) — PP 结果对不上时怎么定位

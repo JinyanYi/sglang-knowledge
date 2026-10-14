@@ -1,0 +1,573 @@
+## 7. 从这里开始添加了很多打印的结果
+### 7.1 搞错了，这段还是block size 12
+trial 3 加 B 内部attn 之前打印
+[K3-L2] A-ENTRY layer=0 pp_rank=0 hidden.sum=-81.312836 hidden.shape=(96, 7168) ps.shape=None input_sharded=False is_write=True
+[KIMI-K3-DBG pp=0/1 tp=2/4 layer=  0 mode=EXTEND] hidden_norm=17.939701080322266 shape=[96, 7168] attn_res_valid=0 attn_res_shape=[96, 0, 7168] attn_res_norm=0.0 attn_res_sum=0.0 attn_res_block_norms=[]
+[K3-L2] A-ENTRY layer=0 pp_rank=0 hidden.sum=-81.312836 hidden.shape=(96, 7168) ps.shape=None input_sharded=False is_write=True
+[K3-L2] PRE-ATTN layer=0 pp_rank=0 hidden.sum=-775.167847 hidden.shape=(96, 7168) is_block_write=True
+[K3-L2] POST-ATTN layer=0 pp_rank=0 hidden.sum=40.776382 hidden.shape=(96, 7168) hidden.edge0=0.000748
+[K3-L2] B-AFTER-ATTN layer=0 pp_rank=0 hidden.sum=40.776382 hidden.shape=(96, 7168) prefix_sum.shape=None
+[K3-L2] C-AFTER-ATTNREDUCE layer=0 pp_rank=0 hidden.sum=40.776382 hidden.shape=(96, 7168) sp_moe=False ar_fusion=False shard_lo=-1 agg2_fused=False
+[KIMI-K3- pp=0/1 tp=0/4 layer=  1 mode=EXTEND] hidden_norm=8.359729766845703 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[K3-L2] D-AFTER-MLP layer=0 pp_rank=0 out.sum=46.144478 out.shape=(96, 7168) shard_lo=-1 keep_sharded=False
+[KIMI-K3-DBG pp=0/1 tp=1/4 layer=  2 mode=EXTEND] hidden_norm=16.224212646484375 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/1 tp=3/4 layer=  3 mode=EXTEND] hidden_norm=32.59051513671875 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/1 tp=3/4 layer=  4 mode=EXTEND] hidden_norm=40.66371154785156 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/1 tp=3/4 layer=  5 mode=EXTEND] hidden_norm=76.94245910644531 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+
+----
+trial 3.2 和3一样重新跑一遍 , PRE_ATTN 之前是一样的。
+[KIMI-K3-DBG pp=0/1 tp=0/4 layer=  0 mode=EXTEND] hidden_norm=17.939701080322266 shape=[96, 7168] attn_res_valid=0 attn_res_shape=[96, 0, 7168] attn_res_norm=0.0 attn_res_sum=0.0 attn_res_block_norms=[]
+[K3-L2] A-ENTRY layer=0 pp_rank=0 hidden.sum=-81.312836 hidden.shape=(96, 7168) ps.shape=None input_sharded=False is_write=True
+[K3-L2] PRE-ATTN layer=0 pp_rank=0 hidden.sum=-775.167847 hidden.shape=(96, 7168) is_block_write=True
+[K3-L2] POST-ATTN layer=0 pp_rank=0 hidden.sum=40.791809 hidden.shape=(96, 7168) hidden.edge0=0.000748
+[K3-L2] B-AFTER-ATTN layer=0 pp_rank=0 hidden.sum=40.791809 hidden.shape=(96, 7168) prefix_sum.shape=None
+[K3-L2] C-AFTER-ATTNREDUCE layer=0 pp_rank=0 hidden.sum=40.791809 hidden.shape=(96, 7168) sp_moe=False ar_fusion=False shard_lo=-1 agg2_fused=False
+[K3-L2] D-AFTER-MLP layer=0 pp_rank=0 out.sum=46.129032 out.shape=(96, 7168) shard_lo=-1 keep_sharded=False
+[K3-L2] D-AFTER-MLP layer=0 pp_rank=0 out.sum=46.129032 out.shape=(96, 7168) shard_lo=-1 keep_sharded=False
+[KIMI-K3-DBG pp=0/1 tp=0/4 layer=  1 mode=EXTEND] hidden_norm=8.359780311584473 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/1 tp=0/4 layer=  2 mode=EXTEND] hidden_norm=16.223304748535156 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/1 tp=3/4 layer=  3 mode=EXTEND] hidden_norm=32.59007263183594 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/1 tp=3/4 layer=  4 mode=EXTEND] hidden_norm=40.5999641418457 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/1 tp=0/4 layer=  5 mode=EXTEND] hidden_norm=76.81015014648438 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+======================
+和pp4 block 2 对比：
+
+[K3-DBG] seg_init pp_rank=0 pp_world=4 attn_res=True sp_attn_res=False sp_coll=False block_size=12 br_shape=(96, 1, 7168) nvb=0 in.rowsums=[0.0] end_layer=6 start_layer=0
+[KIMI-K3-DBG pp=0/4 tp=1/4 layer=  0 mode=EXTEND] hidden_norm=17.939701080322266 shape=[96, 7168] attn_res_valid=0 attn_res_shape=[96, 0, 7168] attn_res_norm=0.0 attn_res_sum=0.0 attn_res_block_norms=[]
+[K3-L2] A-ENTRY layer=0 pp_rank=0 hidden.sum=-81.312836 hidden.shape=(96, 7168) ps.shape=None input_sharded=False is_write=True
+[K3-L2] PRE-ATTN layer=0 pp_rank=0 hidden.sum=-775.167847 hidden.shape=(96, 7168) is_block_write=True
+[K3-L2] POST-ATTN layer=0 pp_rank=0 hidden.sum=40.762806 hidden.shape=(96, 7168) hidden.edge0=0.000748
+[K3-L2] B-AFTER-ATTN layer=0 pp_rank=0 hidden.sum=40.762806 hidden.shape=(96, 7168) prefix_sum.shape=None
+[K3-L2] C-AFTER-ATTNREDUCE layer=0 pp_rank=0 hidden.sum=40.762806 hidden.shape=(96, 7168) sp_moe=False ar_fusion=False shard_lo=-1 agg2_fused=False
+[K3-L2] D-AFTER-MLP layer=0 pp_rank=0 out.sum=46.109592 out.shape=(96, 7168) shard_lo=-1 keep_sharded=False
+[KIMI-K3-DBG pp=0/4 tp=1/4 layer=  1 mode=EXTEND] hidden_norm=8.359699249267578 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=3/4 layer=  2 mode=EXTEND] hidden_norm=16.2205867767334 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=3/4 layer=  3 mode=EXTEND] hidden_norm=32.56691360473633 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=1/4 layer=  4 mode=EXTEND] hidden_norm=40.660953521728516 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=3/4 layer=  5 mode=EXTEND] hidden_norm=76.84164428710938 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[K3-DBG] pre-send pp_rank=0 br.shape=(96, 1, 7168) nvb=1 br.rowsums=[-81.31282043457031] hidden.sum=1319.577881 hidden.edge0=-0.036133
+
+---- trial 2 pp4 block 2 添加b前面打印重跑2
+
+[K3-DBG] seg_init pp_rank=0 pp_world=4 attn_res=True sp_attn_res=False sp_coll=False block_size=12 br_shape=(96, 1, 7168) nvb=0 in.rowsums=[0.0] end_layer=6 start_layer=0
+[KIMI-K3-DBG pp=0/4 tp=0/4 layer=  0 mode=EXTEND] hidden_norm=17.939701080322266 shape=[96, 7168] attn_res_valid=0 attn_res_shape=[96, 0, 7168] attn_res_norm=0.0 attn_res_sum=0.0 attn_res_block_norms=[]
+[K3-L2] A-ENTRY layer=0 pp_rank=0 hidden.sum=-81.312836 hidden.shape=(96, 7168) ps.shape=None input_sharded=False is_write=True
+[K3-L2] PRE-ATTN layer=0 pp_rank=0 hidden.sum=-775.167847 hidden.shape=(96, 7168) is_block_write=True
+[K3-L2] POST-ATTN layer=0 pp_rank=0 hidden.sum=40.776382 hidden.shape=(96, 7168) hidden.edge0=0.000748
+[K3-L2] B-AFTER-ATTN layer=0 pp_rank=0 hidden.sum=40.776382 hidden.shape=(96, 7168) prefix_sum.shape=None
+[K3-L2] C-AFTER-ATTNREDUCE layer=0 pp_rank=0 hidden.sum=40.776382 hidden.shape=(96, 7168) sp_moe=False ar_fusion=False shard_lo=-1 agg2_fused=False
+[K3-L2] D-AFTER-MLP layer=0 pp_rank=0 out.sum=46.158257 out.shape=(96, 7168) shard_lo=-1 keep_sharded=False
+[KIMI-K3-DBG pp=0/4 tp=3/4 layer=  1 mode=EXTEND] hidden_norm=8.359789848327637 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=0/4 layer=  2 mode=EXTEND] hidden_norm=16.223751068115234 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=1/4 layer=  3 mode=EXTEND] hidden_norm=32.573299407958984 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=0/4 layer=  4 mode=EXTEND] hidden_norm=40.6503791809082 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=0/4 layer=  5 mode=EXTEND] hidden_norm=76.93748474121094 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[K3-DBG] pre-send pp_rank=0 br.shape=(96, 1, 7168) nvb=1 br.rowsums=[-81.31282043457031] hidden.sum=1282.072021 hidden.edge0=-0.029297
+
+### 7.2 这里正确了，都是block size 2了 
+绷不住了上面都是attn block size 12我日 换了机器忘了改了
+[K3-DBG] seg_init pp_rank=0 pp_world=4 attn_res=True sp_attn_res=False sp_coll=False block_size=2 br_shape=(96, 3, 7168) nvb=0 in.rowsums=[0.0, 0.0, 0.0] end_layer=6 start_layer=0
+[KIMI-K3-DBG pp=0/4 tp=2/4 layer=  0 mode=EXTEND] hidden_norm=17.939701080322266 shape=[96, 7168] attn_res_valid=0 attn_res_shape=[96, 0, 7168] attn_res_norm=0.0 attn_res_sum=0.0 attn_res_block_norms=[]
+[K3-L2] A-ENTRY layer=0 pp_rank=0 hidden.sum=-81.312836 hidden.shape=(96, 7168) ps.shape=None input_sharded=False is_write=True
+[K3-L2] PRE-ATTN layer=0 pp_rank=0 hidden.sum=-775.167847 hidden.shape=(96, 7168) is_block_write=True
+[K3-L2] POST-ATTN layer=0 pp_rank=0 hidden.sum=40.801300 hidden.shape=(96, 7168) hidden.edge0=0.000748
+[K3-L2] B-AFTER-ATTN layer=0 pp_rank=0 hidden.sum=40.801300 hidden.shape=(96, 7168) prefix_sum.shape=None
+[K3-L2] C-AFTER-ATTNREDUCE layer=0 pp_rank=0 hidden.sum=40.801300 hidden.shape=(96, 7168) sp_moe=False ar_fusion=False shard_lo=-1 agg2_fused=False
+[K3-L2] D-AFTER-MLP layer=0 pp_rank=0 out.sum=46.168758 out.shape=(96, 7168) shard_lo=-1 keep_sharded=False
+[KIMI-K3-DBG pp=0/4 tp=1/4 layer=  1 mode=EXTEND] hidden_norm=8.359618186950684 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=3/4 layer=  2 mode=EXTEND] hidden_norm=16.224008560180664 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=3/4 layer=  3 mode=EXTEND] hidden_norm=24.461055755615234 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=24.187835693359375 attn_res_sum=-43.15898132324219 attn_res_block_norms=[17.939701080322266, 16.224008560180664]
+[KIMI-K3-DBG pp=0/4 tp=3/4 layer=  4 mode=EXTEND] hidden_norm=32.90386199951172 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=24.187835693359375 attn_res_sum=-43.15898132324219 attn_res_block_norms=[17.939701080322266, 16.224008560180664]
+[KIMI-K3-DBG pp=0/4 tp=3/4 layer=  5 mode=EXTEND] hidden_norm=55.05644226074219 shape=[96, 7168] attn_res_valid=3 attn_res_shape=[96, 3, 7168] attn_res_norm=40.83767318725586 attn_res_sum=366.9710693359375 attn_res_block_norms=[17.939701080322266, 16.224008560180664, 32.90386199951172]
+[K3-DBG] pre-send pp_rank=0 br.shape=(96, 3, 7168) nvb=3 br.rowsums=[-81.31282806396484, 38.15385055541992, 410.1299743652344] hidden.sum=986.346802 hidden.edge0=-0.019531
+
+========================
+pp1 block 2:
+[K3-DBG] seg_init pp_rank=0 pp_world=1 attn_res=True sp_attn_res=False sp_coll=False block_size=2 br_shape=(96, 3, 7168) nvb=0 in.rowsums=[0.0, 0.0, 0.0] end_layer=6 start_layer=0
+[KIMI-K3-DBG pp=0/1 tp=2/4 layer=  0 mode=EXTEND] hidden_norm=17.939701080322266 shape=[96, 7168] attn_res_valid=0 attn_res_shape=[96, 0, 7168] attn_res_norm=0.0 attn_res_sum=0.0 attn_res_block_norms=[]
+[K3-L2] A-ENTRY layer=0 pp_rank=0 hidden.sum=-81.312836 hidden.shape=(96, 7168) ps.shape=None input_sharded=False is_write=True
+[K3-L2] PRE-ATTN layer=0 pp_rank=0 hidden.sum=-775.167847 hidden.shape=(96, 7168) is_block_write=True
+[K3-L2] POST-ATTN layer=0 pp_rank=0 hidden.sum=40.788498 hidden.shape=(96, 7168) hidden.edge0=0.000751
+[K3-L2] B-AFTER-ATTN layer=0 pp_rank=0 hidden.sum=40.788498 hidden.shape=(96, 7168) prefix_sum.shape=None
+[K3-L2] C-AFTER-ATTNREDUCE layer=0 pp_rank=0 hidden.sum=40.788498 hidden.shape=(96, 7168) sp_moe=False ar_fusion=False shard_lo=-1 agg2_fused=False
+[K3-L2] D-AFTER-MLP layer=0 pp_rank=0 out.sum=46.169395 out.shape=(96, 7168) shard_lo=-1 keep_sharded=False
+[KIMI-K3-DBG pp=0/1 tp=0/4 layer=  1 mode=EXTEND] hidden_norm=8.35960578918457 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/1 tp=0/4 layer=  2 mode=EXTEND] hidden_norm=16.223323822021484 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/1 tp=1/4 layer=  3 mode=EXTEND] hidden_norm=24.468013763427734 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=24.187376022338867 attn_res_sum=-42.40049362182617 attn_res_block_norms=[17.939701080322266, 16.223323822021484]
+[KIMI-K3-DBG pp=0/1 tp=1/4 layer=  4 mode=EXTEND] hidden_norm=32.90888595581055 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=24.187376022338867 attn_res_sum=-42.40049362182617 attn_res_block_norms=[17.939701080322266, 16.223323822021484]
+[KIMI-K3-DBG pp=0/1 tp=1/4 layer=  5 mode=EXTEND] hidden_norm=55.088016510009766 shape=[96, 7168] attn_res_valid=3 attn_res_shape=[96, 3, 7168] attn_res_norm=40.84144592285156 attn_res_sum=366.6722106933594 attn_res_block_norms=[17.939701080322266, 16.223323822021484, 32.90888595581055]
+[K3-DBG] seg_init pp_rank=0 pp_world=1 attn_res=True sp_attn_res=False sp_coll=False block_size=2 br_shape=(4, 3, 7168) nvb=0 in.rowsums=[5326.7783203125, 5001.9189453125, 2951.737060546875] end_layer=6 start_layer=0
+
+----------
+同配置再跑一次
+[K3-DBG] seg_init pp_rank=0 pp_world=1 attn_res=True sp_attn_res=False sp_coll=False block_size=2 br_shape=(96, 3, 7168) nvb=0 in.rowsums=[0.0, 0.0, 0.0] end_layer=6 start_layer=0
+[KIMI-K3-DBG pp=0/1 tp=3/4 layer=  0 mode=EXTEND] hidden_norm=17.939701080322266 shape=[96, 7168] attn_res_valid=0 attn_res_shape=[96, 0, 7168] attn_res_norm=0.0 attn_res_sum=0.0 attn_res_block_norms=[]
+[K3-L2] A-ENTRY layer=0 pp_rank=0 hidden.sum=-81.312836 hidden.shape=(96, 7168) ps.shape=None input_sharded=False is_write=True
+[K3-L2] PRE-ATTN layer=0 pp_rank=0 hidden.sum=-775.167847 hidden.shape=(96, 7168) is_block_write=True
+[K3-L2] POST-ATTN layer=0 pp_rank=0 hidden.sum=40.787910 hidden.shape=(96, 7168) hidden.edge0=0.000748
+[K3-L2] B-AFTER-ATTN layer=0 pp_rank=0 hidden.sum=40.787910 hidden.shape=(96, 7168) prefix_sum.shape=None
+[K3-L2] C-AFTER-ATTNREDUCE layer=0 pp_rank=0 hidden.sum=40.787910 hidden.shape=(96, 7168) sp_moe=False ar_fusion=False shard_lo=-1 agg2_fused=False
+[K3-L2] D-AFTER-MLP layer=0 pp_rank=0 out.sum=46.164349 out.shape=(96, 7168) shard_lo=-1 keep_sharded=False
+[KIMI-K3-DBG pp=0/1 tp=2/4 layer=  1 mode=EXTEND] hidden_norm=8.35970401763916 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/1 tp=2/4 layer=  2 mode=EXTEND] hidden_norm=16.225116729736328 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/1 tp=2/4 layer=  3 mode=EXTEND] hidden_norm=24.45679473876953 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=24.18857765197754 attn_res_sum=-41.785072326660156 attn_res_block_norms=[17.939701080322266, 16.225116729736328]
+[KIMI-K3-DBG pp=0/1 tp=2/4 layer=  4 mode=EXTEND] hidden_norm=32.921348571777344 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=24.18857765197754 attn_res_sum=-41.785072326660156 attn_res_block_norms=[17.939701080322266, 16.225116729736328]
+[KIMI-K3-DBG pp=0/1 tp=2/4 layer=  5 mode=EXTEND] hidden_norm=55.00419616699219 shape=[96, 7168] attn_res_valid=3 attn_res_shape=[96, 3, 7168] attn_res_norm=40.85219955444336 attn_res_sum=363.3218078613281 attn_res_block_norms=[17.939701080322266, 16.225116729736328, 32.921348571777344]
+[K3-DBG] seg_init pp_rank=0 pp_world=1 attn_res=True sp_attn_res=False sp_coll=False block_size=2 br_shape=(4, 3, 7168) nvb=0 in.rowsums=[3487.716796875, 3866.46826171875, 3007.92822265625] end_layer=6 start_layer=0
+
+### 7.3 tp 16的对比：
+#### 7.3.1 tp 16 pp 4 4机打印：(block size 12)
+[K3-L2] D-AFTER-MLP layer=0 pp_rank=0 out.sum=46.237640 out.shape=(96, 7168) shard_lo=-1 keep_sharded=False
+[K3-L2] D-AFTER-MLP layer=0 pp_rank=0 out.sum=46.237640 out.shape=(96, 7168) shard_lo=-1 keep_sharded=False
+[KIMI-K3-DBG pp=0/4 tp=12/16 layer=  1 mode=EXTEND] hidden_norm=8.359634399414062 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=14/16 layer=  2 mode=EXTEND] hidden_norm=16.270523071289062 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=14/16 layer=  3 mode=EXTEND] hidden_norm=32.417808532714844 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=14/16 layer=  4 mode=EXTEND] hidden_norm=39.063079833984375 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=13/16 layer=  5 mode=EXTEND] hidden_norm=74.8391342163086 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=14/16 layer=  6 mode=EXTEND] hidden_norm=125.8913803100586 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=14/16 layer=  7 mode=EXTEND] hidden_norm=227.88433837890625 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=14/16 layer=  8 mode=EXTEND] hidden_norm=289.442138671875 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=13/16 layer=  9 mode=EXTEND] hidden_norm=411.4511413574219 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=14/16 layer= 10 mode=EXTEND] hidden_norm=523.5542602539062 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=14/16 layer= 11 mode=EXTEND] hidden_norm=668.8720703125 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=4/16 layer= 12 mode=EXTEND] hidden_norm=852.970947265625 shape=[96, 7168] attn_res_valid=1 attn_res_shape=[96, 1, 7168] attn_res_norm=17.939701080322266 attn_res_sum=-81.31283569335938 attn_res_block_norms=[17.939701080322266]
+[KIMI-K3-DBG pp=0/4 tp=10/16 layer= 13 mode=EXTEND] hidden_norm=55.20721435546875 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=853.1595458984375 attn_res_sum=1242.5321044921875 attn_res_block_norms=[17.939701080322266, 852.970947265625]
+[KIMI-K3-DBG pp=0/4 tp=2/16 layer= 14 mode=EXTEND] hidden_norm=87.95464324951172 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=853.1595458984375 attn_res_sum=1242.5321044921875 attn_res_block_norms=[17.939701080322266, 852.970947265625]
+[KIMI-K3-DBG pp=0/4 tp=14/16 layer= 15 mode=EXTEND] hidden_norm=104.44982147216797 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=853.1595458984375 attn_res_sum=1242.5321044921875 attn_res_block_norms=[17.939701080322266, 852.970947265625]
+[KIMI-K3-DBG pp=0/4 tp=3/16 layer= 16 mode=EXTEND] hidden_norm=118.1304931640625 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=853.1595458984375 attn_res_sum=1242.5321044921875 attn_res_block_norms=[17.939701080322266, 852.970947265625]
+[KIMI-K3-DBG pp=0/4 tp=14/16 layer= 17 mode=EXTEND] hidden_norm=141.51719665527344 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=853.1595458984375 attn_res_sum=1242.5321044921875 attn_res_block_norms=[17.939701080322266, 852.970947265625]
+[KIMI-K3-DBG pp=0/4 tp=3/16 layer= 18 mode=EXTEND] hidden_norm=175.96359252929688 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=853.1595458984375 attn_res_sum=1242.5321044921875 attn_res_block_norms=[17.939701080322266, 852.970947265625]
+[KIMI-K3-DBG pp=0/4 tp=9/16 layer= 19 mode=EXTEND] hidden_norm=207.65814208984375 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=853.1595458984375 attn_res_sum=1242.5321044921875 attn_res_block_norms=[17.939701080322266, 852.970947265625]
+[KIMI-K3-DBG pp=0/4 tp=14/16 layer= 20 mode=EXTEND] hidden_norm=267.0140075683594 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=853.1595458984375 attn_res_sum=1242.5321044921875 attn_res_block_norms=[17.939701080322266, 852.970947265625]
+[KIMI-K3-DBG pp=0/4 tp=0/16 layer= 21 mode=EXTEND] hidden_norm=319.3606262207031 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=853.1595458984375 attn_res_sum=1242.5321044921875 attn_res_block_norms=[17.939701080322266, 852.970947265625]
+[KIMI-K3-DBG pp=0/4 tp=8/16 layer= 22 mode=EXTEND] hidden_norm=408.51165771484375 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=853.1595458984375 attn_res_sum=1242.5321044921875 attn_res_block_norms=[17.939701080322266, 852.970947265625]
+[KIMI-K3-DBG pp=0/4 tp=14/16 layer= 23 mode=EXTEND] hidden_norm=528.490478515625 shape=[96, 7168] attn_res_valid=2 attn_res_shape=[96, 2, 7168] attn_res_norm=853.1595458984375 attn_res_sum=1242.5321044921875 attn_res_block_norms=[17.939701080322266, 852.970947265625]
+[K3-DBG] pre-send pp_rank=0 br.shape=(96, 2, 7168) nvb=2 br.rowsums=[-81.31282806396484, 1323.84521484375] hidden.sum=2221.797852 hidden.edge0=0.441406
+
+【插播一下结论，pp1到这里也差的不多，sum那边是 528.2322, 十分位开始有差别】
+
+[KIMI-K3-DBG pp=1/4 tp=15/16 layer= 46 mode=EXTEND] hidden_norm=191.28057861328125 shape=[96, 7168] attn_res_valid=4 attn_res_shape=[96, 4, 7168] attn_res_norm=1235.073974609375 attn_res_sum=1502.9775390625 attn_res_block_norms=[17.939701080322266, 852.970947265625, 823.4275512695312, 345.6784362792969]
+
+[KIMI-K3-DBG pp=2/4 tp=15/16 layer= 69 mode=EXTEND] hidden_norm=291.62713623046875 shape=[96, 7168] attn_res_valid=6 attn_res_shape=[96, 6, 7168] attn_res_norm=1830.5374755859375 attn_res_sum=14043.1572265625 attn_res_block_norms=[17.939701080322266, 852.970947265625, 823.4275512695312, 345.6784362792969, 573.7646484375, 1223.2144775390625]
+
+[KIMI-K3-DBG pp=3/4 tp=4/16 layer= 92 mode=EXTEND] hidden_norm=371.94293212890625 shape=[96, 7168] attn_res_valid=8 attn_res_shape=[96, 8, 7168] attn_res_norm=1967.4810791015625 attn_res_sum=27125.060546875 attn_res_block_norms=[17.939701080322266, 852.970947265625, 823.4275512695312, 345.6784362792969, 573.7646484375, 1223.2144775390625, 480.8937072753906, 537.4529418945312]
+
+============
+#### <NODE_7> 重复一遍
+
+
+#### 7.3.2 tp 16 pp 4 block 2, 和 pp1 对比： 结果: 23层还是差的很少 sum 上差的很少。
+
+[KIMI-K3-DBG pp=0/4 tp=12/16 layer=  5 mode=EXTEND] hidden_norm=52.80130386352539 shape=[96, 7168] attn_res_valid=3 attn_res_shape=[96, 3, 7168] attn_res_norm=39.69485855102539 attn_res_sum=305.03680419921875 attn_res_block_norms=[17.939701080322266, 16.271175384521484, 31.449920654296875]
+[K3-DBG] pre-send pp_rank=0 br.shape=(96, 3, 7168) nvb=3 br.rowsums=[-81.31282806396484, 31.943262100219727, 354.4063720703125] hidden.sum=1219.835327 hidden.edge0=0.035889
+
+
+[KIMI-K3-DBG pp=1/4 tp=9/16 layer= 11 mode=EXTEND] hidden_norm=245.20420837402344 shape=[96, 7168] attn_res_valid=6 attn_res_shape=[96, 6, 7168] attn_res_norm=399.5965881347656 attn_res_sum=830.4007568359375 attn_res_block_norms=[17.939701080322266, 16.271175384521484, 31.449920654296875, 109.23768615722656, 208.12998962402344, 320.7035827636719]
+[K3-DBG] pre-send pp_rank=1 br.shape=(96, 6, 7168) nvb=6 br.rowsums=[-81.31282806396484, 31.943262100219727, 354.4063720703125, 1219.835205078125, -802.5753173828125, 108.10400390625] hidden.sum=-37.858215 hidden.edge0=-0.130859
+
+
+[KIMI-K3-DBG pp=2/4 tp=5/16 layer= 17 mode=EXTEND] hidden_norm=52.54713821411133 shape=[96, 7168] attn_res_valid=9 attn_res_shape=[96, 9, 7168] attn_res_norm=638.0033569335938 attn_res_sum=520.76220703125 attn_res_block_norms=[17.939701080322266, 16.271175384521484, 31.449920654296875, 109.23768615722656, 208.12998962402344, 320.7035827636719, 487.5008544921875, 72.09589385986328, 67.20105743408203]
+
+[KIMI-K3-DBG pp=3/4 tp=11/16 layer= 23 mode=EXTEND] hidden_norm=182.10394287109375 shape=[96, 7168] attn_res_valid=12 attn_res_shape=[96, 12, 7168] attn_res_norm=679.947509765625 attn_res_sum=1284.086181640625 attn_res_block_norms=[17.939701080322266, 16.271175384521484, 31.449920654296875, 109.23768615722656, 208.12998962402344, 320.7035827636719, 487.5008544921875, 72.09589385986328, 67.20105743408203, 89.02909088134766, 131.42005920410156, 173.44400024414062]
+
+---下面这一段是pp1 tp16 block size 2的第23层，就是这个sum确实有差距了
+[KIMI-K3-DBG pp=0/1 tp=4/16 layer= 23 mode=EXTEND] hidden_norm=183.32022094726562 shape=[96, 7168] attn_res_valid=12 attn_res_shape=[96, 12, 7168] attn_res_norm=678.7896118164062 attn_res_sum=1090.6517333984375 attn_res_block_norms=[17.939701080322266, 16.276620864868164, 31.380077362060547, 108.9564208984375, 208.17507934570312, 319.3960876464844, 486.6931457519531, 71.88524627685547, 67.10076141357422, 89.12334442138672, 130.6958465576172, 174.34762573242188]
+----上面
+pp1 tp16 block size 2 的时候重新跑了，sum 差的很少，那没准真的是这个sum的区别？
+[KIMI-K3-DBG pp=0/1 tp=13/16 layer= 23 mode=EXTEND] hidden_norm=181.87619018554688 shape=[96, 7168] attn_res_valid=12 attn_res_shape=[96, 12, 7168] attn_res_norm=679.3159790039062 attn_res_sum=1189.188720703125 attn_res_block_norms=[17.939701080322266, 16.273691177368164, 31.358728408813477, 109.19876098632812, 208.32485961914062, 320.7373962402344, 486.97052001953125, 71.61846923828125, 67.03730010986328, 88.33118438720703, 130.08013916015625, 173.8313751220703]
+
+====
+
+ curl -s "http://localhost:30543/v1/chat/completions" -H 'Content-Type: application/json' -d '{
+>   "model": "<MODEL_PATH>",
+>   "reasoning_effort": "low",
+>   "temperature": 0,
+>   "logprobs": true,
+>   "top_logprobs": 5,
+>   "messages": [{"role": "user", "content": "你好，请介绍你自己"}],
+>   "max_tokens": 256,
+>   "stream": false
+> }'
+{"id":"bbd72c973259443aa1d15789b0003164","object":"chat.completion","created":1787754585,"model":"<MODEL_PATH>","choices":[{"index":0,"message":{"role":"assistant","content":"","reasoning_content":"<|open|>,  ,  ,  ,  ,,  ,  ,  ,  ,  ,  ,  ,  ,  ,  ,  ,   ,  ,    ,  ,   ,  ,  ,  ,  ,   .   ,  ,   .   <|close|> <|close|>  ,    ,   .  , ,  .   , ,  ,  .  ,   ,   ,  .,  ,,  ., ,  ,, ,,  ,  ,,, ,,  ,  the,  ,  ,  .,  ,  ,  .,  ,,  ., \t,  .,  .,  ,,  .,,,,       .,,,,        .,        .,  as,,,,        .  , ","tool_calls":null},"logprobs":{"content":[{"token":"<|open|>","bytes":[60,124,111,112,101,110,124,62],"logprob":-0.09740392118692398,"top_logprobs":[{"token":"<|open|>","bytes":[60,124,111,112,101,110,124,62],"logprob":-0.09740392118692398},{"token":"think","bytes":[116,104,105,110,107],"logprob":-2.7849040031433105},{"token":"The","bytes":[84,104,101],"logprob":-6.2224040031433105},{"token":"<|close|>","bytes":[60,124,99,108,111,115,101,124,62],"logprob":-6.3474040031433105},{"token":">","bytes":[62],"logprob":-6.6599040031433105}]},{"token":",","bytes":[44],"logprob":-2.870971918106079,"top_logprobs":[{"token":",","bytes":[44],"logprob":-2.870971918106079},{"token":".","bytes":[46],"logprob":-4.4022216796875},{"token":"<|open|>","bytes":[60,124,111,112,101,110,124,62],"logprob":-5.4959716796875},{"token":"<|close|>","bytes":[60,124,99,108,111,115,101,124,62],"logprob":-5.6522216796875},{"token":"s","bytes":[115],"logprob":-6.1834716796875}]},{"token":" ","bytes":[32],"logprob":-4.887628078460693,"top_logprobs":[{"token":" ","bytes":[32],"logprob":-4.887628078460693},{"token":".","bytes":[46],"logprob":-5.918878078460693},{"token":",","bytes":[44],"logprob":-6.293878078460693},{"token":"       ","bytes":[32,32,32,32,32,32,32],"logprob":-6.950128078460693},{"token":"   ","bytes":[32,32,32],"logprob":-6.965753078460693}]},{"token":" ","bytes":[32],"logprob":-4.827898979187012,"top_logprobs":[{"token":" ","bytes":[32],"logprob":-4.827898979187012},{"token":"<|close|>","bytes":[60,124,99,108,111,115,101,124,62],"logprob":-5.827898979187012},{"token":",","bytes":[44],"logprob":-5.921648979187012},{"token":"\t","bytes":[9],"logprob":-6.609148979187012},{"token":"<|open|>","bytes":[60,124,111,112,101,110,124,62],"logprob":-6.640398979187012}]},{"token":",","bytes":[44],"logprob":-5.212246894836426,"top_logprobs":[{"token":",","bytes":[44],"logprob":-5.212246894836426},{"token":".","bytes":[46],"logprob":-5.587246894836426},{"token":"<|close|>","bytes":[60,124,99,108,111,115,101,124,62],"logprob":-5.899746894836426},{"token":"<|open|>","bytes":[60,124,111,112,101,110,124,62],"logprob":-6.493496894836426},{"token":" ","bytes":[32],"logprob":-7.009121894836426}]},{"token":" ","bytes":[32],"logprob":-3.040989398956299,"top_logprobs":[{"token":" ","bytes":[32],"logprob":-3.040
+### leg=`newbase-tp16-pp4` (port=30543, reasoning=low, greedy, top_logprobs=5, http=200)
+```text
+finish_reason: length
+matched_stop: None
+content: ''
+reasoning_content: '<|open|>  <|close|><|close|>,<|sep|><|open|>  ,  ,,  ,    ,    ,  , ,  , . ,  ,  ,  ,  ,  , , ,  ,  ,  ,  . ,   , . ,   ,  . ,   ,,  ,  . ,   ,,  ,  . ,  ,  ,,  ,,  ,  . ,   ,,  . ,   ,,   ,  . ,   ,,,   ,   . ,   ,,   ,   ...,   ,,   .  ,   . ,   ,,  . ,   ,,   ..,   ,,   .,   ,,   .,   ., '
+--- token logprobs (top_k=5) ---
+[  0] tok='<|open|>'           logprob=-0.002742  top=[('<|open|>', -0.002742), ('**', -7.627742), ('The', -8.940242), ('You', -9.377742), ('This', -9.565242)]
+[  1] tok=' '                  logprob=-4.498618  top=[(' ', -4.498618), (',', -5.092368), ('<|close|>', -6.561118), ('.', -6.904868), ('<|open|>', -7.373618)]
+[  2] tok=' '                  logprob=-5.465282  top=[(' ', -5.465282), ('   ', -5.590282), ('<|close|>', -5.715282), ('<|open|>', -6.090282), ('.', -6.684032)]
+[  3] tok='<|close|>'          logprob=-4.077209  top=[('<|close|>', -4.077209), (' ', -4.358459), (' `', -6.264709), ('false', -6.577209), ('<|open|>', -6.639709)]
+[  4] tok='<|close|>'          logprob=-5.006319  top=[('<|close|>', -5.006319), (',', -5.037569), ('<|sep|>', -6.287569), ('松', -6.412569), (' ', -6.662569)]
+[  5] tok=','                  logprob=-2.571695  top=[(',', -2.571695), (' ', -3.321695), ('<|close|>', -4.977944), ('<|sep|>', -5.915444), ('<|open|>', -5.946694)]
+[  6] tok='<|sep|>'            logprob=-3.446176  top=[('<|sep|>', -3.446176), ('       ', -3.539926), (',', -3.758676), ('<|close|>', -4.102426), (' ', -4.196176)]
+[  7] tok='<|open|>'           logprob=-0.810329  top=[('<|open|>', -0.810329), (' ', -1.060329), ('<|close|>', -3.060329), (',', -3.310329), ('   ', -5.497829)]
+[  8] tok=' '                  logprob=-1.416446  top=[(' ', -1.416446), ('<|close|>', -4.760196), ('response', -5.635196), (' "', -5.822696), (',', -6.041446)]
+[  9] tok=' '                  logprob=-4.064784  top=[(' ', -4.064784), ('<|close|>', -5.221034), (',', -5.658534), ('<|open|>', -6.127284), ('       ', -6.549159)]
+[ 10] tok=','                  logprob=-3.058290  top=[(',', -3.05829), ('<|sep|>', -3.62079), ('<|close|>', -4.80829), ('.', -5.05829), (' to', -5.43329)]
+[ 11] tok=' '                  logprob=-1.702879  top=[(' ', -1.702879), ('<|close|>', -4.640379), ('       ', -5.109129), ('   ', -5.265379), ('\t', -6.468504)]
+[ 12] tok=' '                  logprob=-3.124237  top=[(' ', -3.124237), ('<|close|>', -4.874237), ('       ', -5.155487), ('<|open|>', -5.624237), ('   ', -5.780487)]
+[ 13] tok=','                  logprob=-5.751819  top=[(',', -5.751819), ('<|close|>', -6.564319), (' ', -6.861194), ('       ', -7.158069), ('   ', -7.251819)]
+[ 14] tok=','                  logprob=-3.109969  top=[(',', -3.109969), (' ', -4.422469), ('<|close|>', -5.984969), ('<|open|>', -6.063094), (' and', -6.156844)]
+[ 15] tok=' '                  logprob=-2.815623  top=[(' ', -2.815623), (',', -5.440622), ('<|close|>', -5.690622), (' "', -6.440622), ('正向', -7.049997)]
+[ 16] tok=' '                  logprob=-3.904592  top=[(' ', -3.904592), ('<|close|>', -5.310842), (',', -5.373342), ('.', -5.592092), (' "', -6.248342)]
+[ 17] tok=','                  logprob=-2.934348  top=[(',', -2.934348), ('<|close|>', -5.653098), ('.', -5.840598), (' ', -6.528098), ('tools', -6.965598)]
+[ 18] tok=' '                  logprob=-2.505446  top=[(' ', -2.505446), (',', -3.880446), ('<|close|>', -5.661696), ('.', -6.317946), ('<|open|>', -6.317946)]
+[ 19] tok=' '                  logprob=-3.289597  top=[(' ', -3.289597), ('.', -5.758347), (' "', -6.039597), ('<|close|>', -6.039597), (',', -6.289597)]
+[ 20] tok=' '                  logprob=-4.320283  top=[(' ', -4.320283), ('<|close|>', -4.570283), ('.', -4.664033), (',', -5.414033), ('//', -6.070283)]
+[ 21] tok=' '                  logprob=-4.607509  top=[(' ', -4.607509), (',', -6.107509), ('<|close|>', -6.841884), ('.', -7.279384), ('private', -7.576259)]
+[ 22] tok=','                  logprob=-4.508589  top=[(',', -4.508589), ('<|close|>', -5.227339), ('.', -6.133589), ('<|open|>', -6.196089), (' ', -6.446089)]
+[ 23] tok=' '                  logprob=-3.488566  top=[(' ', -3.488566), (',', -5.019816), ('.', -6.488566), ('<|close|>', -6.722941), ('<|open|>', -7.051066)]
+[ 24] tok=' '                  logprob=-1.331219  top=[(' ', -1.331219), (',', -2.299969), (' "', -3.799969), ('<|close|>', -4.174969), (' “', -5.174969)]
+[ 25] tok=' '                  logprob=-5.482947  top=[(' ', -5.482947), ('<|close|>', -5.639197), (',', -6.014197), ('<|open|>', -6.920447), ('.', -7.092322)]
+[ 26] tok=' '                  logprob=-3.881582  top=[(' ', -3.881582), (',', -6.162832), ('.', -6.194082), ('<|close|>', -7.100332), ('       ', -7.334707)]
+[ 27] tok=','                  logprob=-3.410201  top=[(',', -3.410201), (' ', -3.597701), ('.', -4.753951), ('<|close|>', -5.597701), ('       ', -6.660201)]
+[ 28] tok=' '                  logprob=-2.305259  top=[(' ', -2.305259), (',', -4.05526), ('<|close|>', -5.30526), ('.', -5.80526), (' and', -6.27401)]
+[ 29] tok=' '                  logprob=-3.137930  top=[(' ', -3.13793), ('<|close|>', -5.88793), (',', -6.07543), ('.', -6.29418), (' `', -6.51293)]
+[ 30] tok=','                  logprob=-3.935916  top=[(',', -3.935916), ('<|close|>', -4.654666), (' ', -5.373416), ('明', -6.560916), ('个', -6.685916)]
+[ 31] tok=' '                  logprob=-2.693679  top=[(' ', -2.693679), (',', -3.474929), ('<|close|>', -5.256179), ('<|open|>', -5.287429), ('<|sep|>', -5.287429)]
+[ 32] tok=','                  logprob=-3.969982  top=[(',', -3.969982), (' ', -4.188732), ('<|close|>', -4.344982), ('.', -4.407482), ('\n', -5.469982)]
+[ 33] tok=' '                  logprob=-2.419749  top=[(' ', -2.419749), (',', -4.013498), ('.', -5.325998), (' "', -6.107248), ('<|close|>', -6.200998)]
+[ 34] tok=' '                  logprob=-1.294251  top=[(' ', -1.294251), ('<|close|>', -4.200501), (',', -4.263001), (' "', -5.200501), (' `', -5.200501)]
+[ 35] tok=','                  logprob=-0.062436  top=[(',', -0.062436), ('.', -3.562436), (',.', -7.249936), ('.,', -7.281186), ('s', -7.374936)]
+[ 36] tok=' '                  logprob=-3.562147  top=[(' ', -3.562147), (',', -5.155897), ('.', -5.624647), ('\t', -6.124647), ('       ', -6.843397)]
+[ 37] tok='.'                  logprob=-2.907240  top=[('.', -2.90724), (',', -3.50099), (' ', -3.53224), ('<|close|>', -3.62599), ('               ', -5.50099)]
+[ 38] tok=' '                  logprob=-5.471848  top=[(' ', -5.471848), ('       ', -6.221848), (',', -6.721848), ('<|close|>', -7.112473), ('               ', -7.174973)]
+[ 39] tok=','                  logprob=-1.660974  top=[(',', -1.660974), ('<|close|>', -3.192224), ('.', -4.660975), (' `', -5.223475), (' ', -5.348475)]
+[ 40] tok=' '                  logprob=-1.859203  top=[(' ', -1.859203), (',', -4.202952), ('<|close|>', -4.421702), ('\n', -4.984202), (' "', -5.577952)]
+[ 41] tok=' '                  logprob=-3.149446  top=[(' ', -3.149446), ('<|close|>', -5.149446), (',', -6.024446), ('.', -6.461946), (' "', -6.743196)]
+[ 42] tok=','                  logprob=-2.960452  top=[(',', -2.960452), ('.', -5.366702), (' ', -6.022952), ('console', -6.429202), ('<|close|>', -6.491702)]
+[ 43] tok=' '                  logprob=-1.072367  top=[(' ', -1.072367), ('<|close|>', -4.697368), (',', -5.791118), ('\t', -7.087993), (" '", -7.259868)]
+[ 44] tok=' '                  logprob=-3.471950  top=[(' ', -3.47195), ('<|close|>', -5.346951), (',', -5.690701), ('.', -6.503201), ('\n', -6.846951)]
+[ 45] tok=','                  logprob=-3.668296  top=[(',', -3.668296), (' ', -4.074546), ('<|close|>', -4.105796), ('.', -4.887046), ('，', -6.996421)]
+[ 46] tok=' '                  logprob=-3.560629  top=[(' ', -3.560629), (',', -4.248129), ('   ', -6.232504), ('<|close|>', -6.529379), ('       ', -6.591879)]
+[ 47] tok=' '                  logprob=-4.569129  top=[(' ', -4.569129), ('<|close|>', -5.756629), ('.', -5.912879), (',', -6.694129), ('               ', -7.178504)]
+[ 48] tok=','                  logprob=-5.833908  top=[(',', -5.833908), ('.', -5.927658), ('<|close|>', -6.240158), (' ', -6.833908), ('               ', -7.162033)]
+[ 49] tok=' '                  logprob=-1.978665  top=[(' ', -1.978665), (',', -2.853665), ('<|close|>', -4.228665), ('s', -4.666165), ('.', -5.197415)]
+[ 50] tok=' '                  logprob=-2.108878  top=[(' ', -2.108878), ('\t', -4.358878), ('<|close|>', -4.671378), ('       ', -5.983878), ('.', -6.265128)]
+[ 51] tok=','                  logprob=-3.580855  top=[(',', -3.580855), ('<|close|>', -4.487105), ('#ifdef', -5.268355), ('.', -5.299605), ('，', -5.330855)]
+[ 52] tok=' '                  logprob=-2.575567  top=[(' ', -2.575567), ('<|close|>', -5.638067), (',', -6.169317), ('<|open|>', -7.294317), ('s', -7.544317)]
+[ 53] tok=' '                  logprob=-4.442253  top=[(' ', -4.442253), ('.', -5.286003), (',', -5.754753), ('<|close|>', -5.879753), ('\t', -6.254753)]
+[ 54] tok=','                  logprob=-2.286674  top=[(',', -2.286674), (' ', -3.849174), ('.', -4.630424), ('<|close|>', -5.224174), ('，', -7.286674)]
+[ 55] tok=' '                  logprob=-4.501087  top=[(' ', -4.501087), ('<|close|>', -5.844837), (',', -6.376087), ('.', -6.766712), ('重点', -7.032337)]
+[ 56] tok=','                  logprob=-0.361145  top=[(',', -0.361145), (' ', -3.361145), ('<|close|>', -4.298645), ('.', -5.954895), (' to', -6.517395)]
+[ 57] tok=' '                  logprob=-2.479641  top=[(' ', -2.479641), ('<|close|>', -5.510891), (',', -5.573391), ('\t', -6.432766), ('\n', -6.823391)]
+[ 58] tok=','                  logprob=-2.313404  top=[(',', -2.313404), (' ', -3.157154), ('<|close|>', -3.532154), (' "', -6.094654), ('.', -6.125904)]
+[ 59] tok=' '                  logprob=-4.753357  top=[(' ', -4.753357), ('.', -6.034607), (',', -6.503357), ('\n', -6.831482), ('<|close|>', -6.972107)]
+[ 60] tok=' '                  logprob=-2.742123  top=[(' ', -2.742123), (',', -4.367123), ('.', -4.960873), ('<|close|>', -5.554623), ('//', -6.257748)]
+[ 61] tok=','                  logprob=-3.803031  top=[(',', -3.803031), (' ', -6.662406), ('print', -6.959281), ('<|close|>', -7.037406), ('交', -7.053031)]
+[ 62] tok=' '                  logprob=-1.513526  top=[(' ', -1.513526), (',', -5.232276), ('<|close|>', -6.294776), ('.', -6.888526), ('\n', -7.560401)]
+[ 63] tok=' '                  logprob=-4.152255  top=[(' ', -4.152255), ('<|close|>', -5.902255), ('\t', -6.058505), (',', -6.339755), ('花', -6.464755)]
+[ 64] tok=','                  logprob=-5.313038  top=[(',', -5.313038), ('.', -5.344288), ('<|close|>', -5.969288), (' ', -6.797413), ('\t', -6.891163)]
+[ 65] tok=' '                  logprob=-1.888120  top=[(' ', -1.88812), ('<|close|>', -5.20062), (',', -5.91937), ('\t', -6.10687), (' `', -6.76312)]
+[ 66] tok=' '                  logprob=-1.747155  top=[(' ', -1.747155), (',', -4.247155), (' #', -4.778405), ('\t', -4.903405), ('<|close|>', -5.340905)]
+[ 67] tok=','                  logprob=-4.295520  top=[(',', -4.29552), (' ', -4.73302), ('.', -4.95177), ('       ', -5.98302), ('<|close|>', -7.13927)]
+[ 68] tok=' '                  logprob=-6.294409  top=[(' ', -6.294409), ('<|close|>', -6.935034), ('明', -7.466284), ('.', -7.528784), ('重点', -7.778784)]
+[ 69] tok=' '                  logprob=-4.101771  top=[(' ', -4.101771), ('<|close|>', -5.133021), (',', -5.414271), ('.', -5.476771), (' "', -6.508021)]
+[ 70] tok='.'                  logprob=-4.705247  top=[('.', -4.705247), (',', -4.955247), (' ', -6.392747), ('<|close|>', -6.392747), ('，', -6.548997)]
+[ 71] tok=' '                  logprob=-5.333237  top=[(' ', -5.333237), ('\t', -6.301987), ('.', -6.458237), ('       ', -6.614487), (',', -6.676987)]
+[ 72] tok=','                  logprob=-4.512643  top=[(',', -4.512643), (' ', -4.637643), ('<|close|>', -4.793893), ('.', -4.825143), ('\t', -5.356393)]
+[ 73] tok=' '                  logprob=-4.820472  top=[(' ', -4.820472), (',', -5.320472), ('.', -5.664222), ('       ', -6.929847), ('<|close|>', -6.945472)]
+[ 74] tok=' '                  logprob=-0.030238  top=[(' ', -0.030238), (' "', -5.467738), (',', -5.780238), ('<|close|>', -6.936488), (" '", -7.498988)]
+[ 75] tok=' '                  logprob=-3.116795  top=[(' ', -3.116795), ('.', -4.804295), ('<|close|>', -5.398045), (',', -5.585545), ('\n', -6.773045)]
+[ 76] tok=','                  logprob=-4.924745  top=[(',', -4.924745), (' ', -5.049745), ('<|close|>', -5.674745), ('.', -6.018495), (" '", -6.90912)]
+[ 77] tok=' '                  logprob=-3.584288  top=[(' ', -3.584288), ('<|close|>', -5.365539), (',', -5.584289), ('.', -6.178039), (' "', -6.318664)]
+[ 78] tok='.'                  logprob=-4.697062  top=[('.', -4.697062), (' ', -4.728312), (',', -5.415812), ('<|close|>', -5.853312), ('\t', -6.384562)]
+[ 79] tok=' '                  logprob=-4.135478  top=[(' ', -4.135478), ('.', -5.291728), ('<|close|>', -5.604228), (',', -5.947978), ('，', -6.354228)]
+[ 80] tok=','                  logprob=-2.247584  top=[(',', -2.247584), ('.', -3.966334), (' ', -4.466334), ('<|close|>', -5.091334), (' and', -6.028834)]
+[ 81] tok=' '                  logprob=-1.091561  top=[(' ', -1.091561), (',', -2.966561), ('.', -4.591561), (' "', -5.779061), ('<|close|>', -5.966561)]
+[ 82] tok=' '                  logprob=-0.587066  top=[(' ', -0.587066), (' "', -5.868316), ('<|close|>', -6.149566), (',', -6.399566), ('.', -6.430816)]
+[ 83] tok=' '                  logprob=-2.973922  top=[(' ', -2.973922), (',', -3.786422), ('.', -5.739547), ('<|close|>', -5.755172), ('<|open|>', -6.598922)]
+[ 84] tok=','                  logprob=-2.759644  top=[(',', -2.759644), ('.', -4.353394), (' ', -5.790894), (';', -6.478394), ('       ', -6.806519)]
+[ 85] tok=' '                  logprob=-4.321051  top=[(' ', -4.321051), (',', -4.602301), ('<|close|>', -6.617926), ('.', -6.696051), (' "', -6.727301)]
+[ 86] tok=' '                  logprob=-2.980317  top=[(' ', -2.980317), ('<|close|>', -4.355317), (',', -4.824067), ('.', -5.886567), ('，', -7.105317)]
+[ 87] tok='.'                  logprob=-2.496204  top=[('.', -2.496204), (',', -3.402454), (' ', -5.308704), ('<|close|>', -6.730579), ('s', -7.121204)]
+[ 88] tok=' '                  logprob=-3.682614  top=[(' ', -3.682614), (',', -5.151363), ('.', -5.745113), ('<|close|>', -6.088863), ('       ', -6.432613)]
+[ 89] tok=','                  logprob=-3.040899  top=[(',', -3.040899), ('<|close|>', -3.634649), ('.', -4.447148), (' ', -4.665898), ('\n', -5.103398)]
+[ 90] tok=' '                  logprob=-3.441182  top=[(' ', -3.441182), (',', -5.347432), ('       ', -5.909932), ('.', -6.206807), ('\n', -6.316182)]
+[ 91] tok=' '                  logprob=-2.060605  top=[(' ', -2.060605), ('.', -5.341855), ('<|close|>', -5.623105), ('\n', -5.779355), (',', -6.029355)]
+[ 92] tok=' '                  logprob=-3.681421  top=[(' ', -3.681421), ('.', -3.806421), (',', -4.24392), ('<|close|>', -5.61892), (' —', -6.478295)]
+[ 93] tok=','                  logprob=-5.254967  top=[(',', -5.254967), (' ', -5.411217), ('<|close|>', -6.004967), ('.', -6.379967), ('，', -7.411217)]
+[ 94] tok=','                  logprob=-2.901610  top=[(',', -2.90161), (' ', -3.46411), ('.', -5.96411), ('<|close|>', -6.010985), ('       ', -6.104735)]
+[ 95] tok=' '                  logprob=-0.371815  top=[(' ', -0.371815), (',', -3.496815), ('.', -5.121815), (' and', -5.153065), (' maybe', -5.559315)]
+[ 96] tok=' '                  logprob=-1.829872  top=[(' ', -1.829872), (',', -4.642372), ('<|close|>', -5.111122), ('.', -6.236122), (" '", -6.236122)]
+[ 97] tok=','                  logprob=-3.656420  top=[(',', -3.65642), ('.', -3.96892), (' ', -5.15642), ('<|close|>', -5.81267), (' "', -7.15642)]
+[ 98] tok=' '                  logprob=-1.358801  top=[(' ', -1.358801), ('.', -1.671301), (',', -3.358801), ('\n', -5.202551), ('<|close|>', -5.546301)]
+[ 99] tok=' '                  logprob=-4.453935  top=[(' ', -4.453935), (',', -5.235185), ('.', -5.360185), ('<|close|>', -5.610185), ('\t', -7.141435)]
+[100] tok='.'                  logprob=-4.252868  top=[('.', -4.252868), (',', -4.627868), (' ', -5.409118), ('<|close|>', -5.846618), (' to', -6.784118)]
+[101] tok=' '                  logprob=-3.255194  top=[(' ', -3.255194), ('.', -5.348944), (',', -5.536444), ('\t', -6.348944), ('<|close|>', -6.567694)]
+[102] tok=','                  logprob=-1.791002  top=[(',', -1.791002), ('.', -5.041002), ('<|close|>', -5.134752), (' "', -5.853502), ('\t', -6.259752)]
+[103] tok=' '                  logprob=-0.562829  top=[(' ', -0.562829), (',', -4.219079), ('\t', -5.562829), ('<|close|>', -5.750329), ('\n', -5.812829)]
+[104] tok=' '                  logprob=-1.967705  top=[(' ', -1.967705), (',', -2.717705), ('.', -3.748955), ('<|close|>', -5.217705), ('花', -5.748955)]
+[105] tok=' '                  logprob=-0.701543  top=[(' ', -0.701543), (',', -2.264043), (' the', -5.576543), ('<|close|>', -5.732793), (' a', -5.951543)]
+[106] tok=','                  logprob=-4.255269  top=[(',', -4.255269), ('.', -4.505269), ('<|close|>', -7.614644), ('明', -7.708394), (':', -7.895894)]
+[107] tok=','                  logprob=-2.859415  top=[(',', -2.859415), (' ', -2.921915), ('.', -4.796915), ('<|close|>', -6.609415), (' to', -6.65629)]
+[108] tok=' '                  logprob=-3.740277  top=[(' ', -3.740277), (',', -5.209026), ('               ', -6.084026), ('<|close|>', -6.146526), ('.', -6.365276)]
+[109] tok=' '                  logprob=-1.669164  top=[(' ', -1.669164), ('<|close|>', -3.856664), ('.', -3.981664), (',', -4.356664), (' #', -6.544164)]
+[110] tok=','                  logprob=-0.999418  top=[(',', -0.999418), ('.', -3.311918), (' ', -3.311918), (';', -6.624418), ('       ', -7.077543)]
+[111] tok=' '                  logprob=-2.443076  top=[(' ', -2.443076), (',', -4.661826), (' to', -5.755576), ('.', -6.318076), ('       ', -6.411826)]
+[112] tok=' '                  logprob=-0.809152  top=[(' ', -0.809152), (',', -4.027902), ('<|close|>', -4.402902), ('.', -4.590402), ('\n\n', -6.340402)]
+[113] tok='.'                  logprob=-3.044472  top=[('.', -3.044472), (' ', -4.669472), (',', -5.106972), ('<|close|>', -5.794472), ('，', -6.169472)]
+[114] tok=' '                  logprob=-3.366785  top=[(' ', -3.366785), ('\n', -5.710535), (',', -5.866785), ('.', -5.866785), ('\t', -5.929285)]
+[115] tok=','                  logprob=-2.940935  top=[(',', -2.940935), ('.', -4.159685), (' "', -5.190935), (' ', -5.347185), ('<|close|>', -5.753435)]
+[116] tok=' '                  logprob=-2.652753  top=[(' ', -2.652753), (',', -4.121503), ('<|close|>', -5.527753), ('.', -5.777753), ('\t', -5.809003)]
+[117] tok=' '                  logprob=-1.385828  top=[(' ', -1.385828), ('.', -5.510828), ('\t', -5.542078), ('<|close|>', -5.573328), ('\n', -5.792078)]
+[118] tok=','                  logprob=-2.050572  top=[(',', -2.050572), (' ', -2.081822), ('       ', -3.738072), ('?', -5.456821), ('\n', -5.738071)]
+[119] tok=' '                  logprob=-3.926031  top=[(' ', -3.926031), (',', -4.051031), ('.', -4.957281), ('<|close|>', -6.238531), ('\n', -6.316656)]
+[120] tok=' '                  logprob=-0.620949  top=[(' ', -0.620949), (',', -1.995949), ('.', -3.745949), (' "', -4.245949), ('<|close|>', -4.589699)]
+[121] tok=','                  logprob=-1.924723  top=[(',', -1.924723), ('.', -2.955973), (' ', -4.362223), ('<|close|>', -4.955973), (':', -6.049723)]
+[122] tok=','                  logprob=-2.552570  top=[(',', -2.55257), (' ', -2.61507), ('.', -5.20882), ('<|close|>', -5.33382), (' and', -7.130695)]
+[123] tok=' '                  logprob=-4.621695  top=[(' ', -4.621695), ('<|close|>', -5.965445), ('.', -6.184195), ('               ', -6.309195), ('\t', -6.527945)]
+[124] tok=' '                  logprob=-3.354327  top=[(' ', -3.354327), ('<|close|>', -5.135577), ('\t', -5.760577), ('图', -6.573077), ('\n', -6.666827)]
+[125] tok=','                  logprob=-4.155587  top=[(',', -4.155587), ('.', -4.749337), ('<|close|>', -5.061837), ('//', -5.186837), (' ', -5.811837)]
+[126] tok=','                  logprob=-2.456645  top=[(',', -2.456645), (' ', -3.550395), ('.', -4.956645), ('\n', -5.425395), ('       ', -5.675395)]
+[127] tok=' '                  logprob=-3.692039  top=[(' ', -3.692039), (',', -4.692039), ('\t', -5.442039), ('.', -5.879539), ('       ', -6.035789)]
+[128] tok=' '                  logprob=-0.895920  top=[(' ', -0.89592), ('<|close|>', -4.48967), (',', -5.23967), ('.', -7.349045), ('\t', -7.567795)]
+[129] tok=','                  logprob=-3.102428  top=[(',', -3.102428), ('.', -3.289928), ('<|close|>', -6.196178), (';', -6.289928), ('\n', -6.352428)]
+[130] tok=' '                  logprob=-5.287509  top=[(' ', -5.287509), ('.', -5.850009), (',', -6.756259), ('<|close|>', -6.881259), ('\t', -7.350009)]
+[131] tok=' '                  logprob=-2.592442  top=[(' ', -2.592442), ('<|close|>', -5.498693), (',', -5.873693), ('.', -6.358068), ('<|open|>', -7.233068)]
+[132] tok='.'                  logprob=-5.161478  top=[('.', -5.161478), (',', -5.692728), ('<|close|>', -6.130228), (' ', -6.380228), ('，', -6.770853)]
+[133] tok=' '                  logprob=-3.464256  top=[(' ', -3.464256), ('.', -4.558006), ('\n', -5.339256), ('\t', -5.526756), (',', -5.683006)]
+[134] tok=','                  logprob=-4.679752  top=[(',', -4.679752), (' ', -5.367252), (' "', -5.492252), ('\n', -5.523502), ('.', -5.836002)]
+[135] tok=' '                  logprob=-3.669541  top=[(' ', -3.669541), (',', -4.638291), ('.', -5.200791), ('\n', -6.450791), ('\t', -6.544541)]
+[136] tok=' '                  logprob=-2.759251  top=[(' ', -2.759251), (',', -4.728001), ('.', -5.384251), ('\n', -5.415501), ('\t', -5.665501)]
+[137] tok=' '                  logprob=-4.429520  top=[(' ', -4.42952), (',', -5.11702), ('<|close|>', -6.67952), ('\t', -7.351395), ('.', -7.61702)]
+[138] tok=','                  logprob=-0.863919  top=[(',', -0.863919), ('.', -2.926419), ('<|close|>', -5.082669), (';', -6.426419), ('s', -6.520169)]
+[139] tok=','                  logprob=-2.419616  top=[(',', -2.419616), ('.', -2.638366), (' ', -3.888366), (' "', -5.138366), ('<|close|>', -5.450866)]
+[140] tok=' '                  logprob=-1.490189  top=[(' ', -1.490189), (',', -1.740189), ('<|close|>', -4.771439), (' "', -4.833939), (' //', -4.865189)]
+[141] tok=' '                  logprob=-4.133197  top=[(' ', -4.133197), ('<|close|>', -5.695697), ('\t', -6.601947), ('\n', -6.914447), (',', -7.101947)]
+[142] tok='.'                  logprob=-2.468320  top=[('.', -2.46832), (',', -2.93707), ('<|close|>', -4.56207), ('//', -5.84332), (' ', -6.24957)]
+[143] tok=' '                  logprob=-4.534461  top=[(' ', -4.534461), (',', -5.534461), ('.', -5.784461), ('\n', -5.971961), (' "', -6.034461)]
+[144] tok=','                  logprob=-1.221667  top=[(',', -1.221667), (' ', -2.940417), (' "', -4.034167), ('.', -4.221667), ('<|close|>', -4.815417)]
+[145] tok=' '                  logprob=-3.336503  top=[(' ', -3.336503), (',', -5.274003), ('.', -6.586503), ('<|close|>', -6.961503), ('重点', -7.164628)]
+[146] tok=' '                  logprob=-1.827794  top=[(' ', -1.827794), (',', -4.952794), ('<|close|>', -5.046544), (' "', -5.952794), ('\t', -6.296544)]
+[147] tok=' '                  logprob=-1.429584  top=[(' ', -1.429584), ('.', -2.460834), (',', -6.335834), ('<|close|>', -6.601459), (" '", -6.757709)]
+[148] tok=','                  logprob=-2.342173  top=[(',', -2.342173), ('.', -3.060923), ('       ', -6.076548), (' ', -6.139048), (':', -6.217173)]
+[149] tok=','                  logprob=-2.825785  top=[(',', -2.825785), (' ', -5.294535), ('.', -5.763285), ('       ', -6.013285), (':', -6.169535)]
+[150] tok=' '                  logprob=-1.566432  top=[(' ', -1.566432), (',', -3.410182), ('<|close|>', -5.628932), ('\n', -5.847682), ('.', -5.878932)]
+[151] tok=' '                  logprob=-3.923297  top=[(' ', -3.923297), ('「', -5.767047), ('<|close|>', -6.048297), ('               ', -6.392047), ('.', -6.642047)]
+[152] tok=' '                  logprob=-1.668793  top=[(' ', -1.668793), (',', -2.293793), ('<|close|>', -4.668793), ('.', -4.700043), ('-', -6.512543)]
+[153] tok=','                  logprob=-3.509537  top=[(',', -3.509537), ('.', -4.915787), ('       ', -6.775162), (' ', -6.993912), (':', -7.040787)]
+[154] tok=' '                  logprob=-3.788286  top=[(' ', -3.788286), (',', -4.350786), ('<|close|>', -6.475786), ('       ', -6.913286), ('.', -7.085161)]
+[155] tok=' '                  logprob=-3.385055  top=[(' ', -3.385055), (',', -4.478805), ('.', -4.822555), ('<|close|>', -6.21318), (' "', -6.322555)]
+[156] tok='.'                  logprob=-1.015285  top=[('.', -1.015285), (' ', -1.827785), (',', -2.890285), ('<|close|>', -6.265285), (' to', -6.765285)]
+[157] tok=' '                  logprob=-4.536435  top=[(' ', -4.536435), ('.', -5.880185), ('\t', -6.255185), (',', -6.317685), ('       ', -6.630185)]
+[158] tok=','                  logprob=-2.775238  top=[(',', -2.775238), (' ', -4.618988), ('<|close|>', -4.743988), ('\n', -4.962738), ('.', -5.275238)]
+[159] tok=' '                  logprob=-1.960868  top=[(' ', -1.960868), (',', -4.335868), ('<|close|>', -5.710868), (' "', -6.023368), ('       ', -6.429618)]
+[160] tok=' '                  logprob=-0.098891  top=[(' ', -0.098891), (',', -4.848891), ('<|close|>', -5.411391), (' "', -6.067641), (" '", -6.255141)]
+[161] tok=' '                  logprob=-0.555774  top=[(' ', -0.555774), ('<|close|>', -5.962024), ('       ', -6.493274), ('\t', -6.680774), ('   ', -6.712024)]
+[162] tok=','                  logprob=-4.725668  top=[(',', -4.725668), ('<|close|>', -5.756918), ('.', -5.913168), ('，', -6.975668), (' ', -6.991293)]
+[163] tok=','                  logprob=-5.162417  top=[(',', -5.162417), (' ', -5.506167), ('.', -6.584292), ('<|close|>', -7.131167), ('\t', -7.646792)]
+[164] tok=','                  logprob=-3.663912  top=[(',', -3.663912), (' ', -3.663912), ('.', -4.882662), (' "', -6.163912), ('<|close|>', -6.445162)]
+[165] tok=' '                  logprob=-1.770875  top=[(' ', -1.770875), (',', -4.208375), ('.', -5.833375), (' and', -6.083375), ('\n', -6.099)]
+[166] tok=' '                  logprob=-3.029724  top=[(' ', -3.029724), ('\t', -5.373474), (' "', -5.904724), (' `', -5.935974), ('.', -6.092224)]
+[167] tok=' '                  logprob=-2.170068  top=[(' ', -2.170068), ('<|close|>', -4.888818), (',', -5.045068), ('.', -5.732568), ('\t', -6.326318)]
+[168] tok=','                  logprob=-5.068698  top=[(',', -5.068698), (' ', -5.349948), ('.', -5.724948), ('<|close|>', -6.615573), ('\n', -7.490573)]
+[169] tok=' '                  logprob=-3.355193  top=[(' ', -3.355193), (',', -4.698943), ('<|close|>', -5.792693), ('.', -6.198943), ('<|open|>', -6.995818)]
+[170] tok=' '                  logprob=-3.066090  top=[(' ', -3.06609), (',', -4.94109), ('<|close|>', -5.81609), ('       ', -6.362965), ('\t', -6.925465)]
+[171] tok=' '                  logprob=-2.345693  top=[(' ', -2.345693), ('.', -4.033193), (',', -4.939443), ('<|close|>', -6.626943), ('一', -7.298818)]
+[172] tok='.'                  logprob=-4.749406  top=[('.', -4.749406), (',', -5.124406), ('<|close|>', -5.905656), ('//', -6.343156), ('               ', -6.468156)]
+[173] tok=' '                  logprob=-2.874818  top=[(' ', -2.874818), ('.', -5.656068), ('\t', -5.906068), (' "', -5.906068), (',', -6.171693)]
+[174] tok=','                  logprob=-0.757077  top=[(',', -0.757077), (' "', -4.069576), (' `', -4.600826), (':', -4.632076), ('<|close|>', -5.225826)]
+[175] tok=' '                  logprob=-4.107898  top=[(' ', -4.107898), (',', -4.576648), ('.', -5.936023), ('       ', -6.607898), (' in', -6.639148)]
+[176] tok=' '                  logprob=-2.575180  top=[(' ', -2.57518), ('<|close|>', -4.95018), (',', -5.29393), ('.', -5.35643), ('               ', -5.82518)]
+[177] tok=' '                  logprob=-3.093016  top=[(' ', -3.093016), (',', -5.686766), ('.', -6.405516), ('\t', -6.749266), ('       ', -6.827391)]
+[178] tok=','                  logprob=-1.765582  top=[(',', -1.765582), ('.', -2.984332), (':', -5.921832), (' ', -6.578082), ('，', -6.671832)]
+[179] tok=','                  logprob=-3.325876  top=[(',', -3.325876), (' ', -4.263376), ('.', -5.013376), ('       ', -6.560251), (';', -6.810251)]
+[180] tok=' '                  logprob=-2.113429  top=[(' ', -2.113429), (',', -3.457179), ('.', -5.144679), ('\n', -5.613429), ('<|close|>', -6.050929)]
+[181] tok=' '                  logprob=-1.015539  top=[(' ', -1.015539), (',', -3.765539), ('.', -3.921789), ('<|close|>', -4.953039), ('\t', -6.046789)]
+[182] tok=' '                  logprob=-3.714885  top=[(' ', -3.714885), (',', -4.871135), ('.', -4.902385), ('<|close|>', -5.089885), ('               ', -5.808635)]
+[183] tok=','                  logprob=-2.210687  top=[(',', -2.210687), ('.', -2.960687), (':', -6.366938), ('<|close|>', -6.616938), (';', -6.773188)]
+[184] tok=' '                  logprob=-3.462788  top=[(' ', -3.462788), (',', -5.119039), ('.', -5.744039), ('<|close|>', -6.900289), ('       ', -7.353414)]
+[185] tok=' '                  logprob=-3.803086  top=[(' ', -3.803086), (',', -4.834336), ('<|close|>', -5.771836), ('.', -5.834336), (' "', -6.521836)]
+[186] tok=' '                  logprob=-2.005445  top=[(' ', -2.005445), (',', -4.505445), ('.', -4.505445), ('<|close|>', -5.130445), (' "', -6.317945)]
+[187] tok='.'                  logprob=-2.961736  top=[('.', -2.961736), (',', -3.117986), (' ', -4.680486), ('<|close|>', -6.274236), (':', -7.399236)]
+[188] tok='.'                  logprob=-4.764133  top=[('.', -4.764133), (' ', -5.076633), (',', -5.482883), ('\n', -5.639133), ('\t', -5.795383)]
+[189] tok='.'                  logprob=-1.862634  top=[('.', -1.862634), (' ', -2.956384), (',', -3.237634), (' "', -4.331384), ('\n', -4.706384)]
+[190] tok=','                  logprob=-3.259691  top=[(',', -3.259691), (' ', -3.915941), ('.', -4.697191), ('       ', -5.322191), ('\n', -5.665941)]
+[191] tok=' '                  logprob=-0.381801  top=[(' ', -0.381801), (',', -4.100551), (' "', -5.225551), ('<|close|>', -5.725551), (' `', -5.944301)]
+[192] tok=' '                  logprob=-2.066471  top=[(' ', -2.066471), ('       ', -3.722721), (',', -5.160221), ('.', -5.285221), ('\n', -5.472721)]
+[193] tok=' '                  logprob=-1.852391  top=[(' ', -1.852391), ('\t', -6.63364), ('<|close|>', -6.75864), (',', -6.78989), ('       ', -6.805515)]
+[194] tok=','                  logprob=-4.546448  top=[(',', -4.546448), (' ', -4.827698), ('.', -5.140198), ('       ', -6.265198), ('   ', -6.577698)]
+[195] tok=','                  logprob=-3.360320  top=[(',', -3.36032), (' ', -3.57907), ('       ', -5.82907), ('<|close|>', -6.45407), ('.', -6.688445)]
+[196] tok=' '                  logprob=-1.588013  top=[(' ', -1.588013), (',', -2.900513), ('       ', -5.713013), ('.', -5.775513), ('\t', -6.384888)]
+[197] tok=' '                  logprob=-4.496338  top=[(' ', -4.496338), ('\t', -5.871338), ('<|close|>', -5.965088), (',', -6.715088), ('               ', -6.965088)]
+[198] tok=' '                  logprob=-0.846097  top=[(' ', -0.846097), (',', -2.596097), ('.', -3.252347), ('\t', -4.658597), ('<|close|>', -5.689847)]
+[199] tok='.'                  logprob=-4.485580  top=[('.', -4.48558), (',', -4.73558), (' ', -4.86058), ('<|close|>', -7.001205), (':', -7.407455)]
+[200] tok=' '                  logprob=-3.763415  top=[(' ', -3.763415), (',', -5.857164), ('.', -6.497789), ('<|close|>', -7.466539), ('\t', -7.513414)]
+[201] tok=' '                  logprob=-3.767395  top=[(' ', -3.767395), (',', -5.642395), ('<|close|>', -5.642395), ('\t', -6.267395), ('       ', -6.392395)]
+[202] tok=','                  logprob=-2.880471  top=[(',', -2.880471), ('.', -5.442971), ('s', -6.474221), ('redo', -7.021096), ('tools', -7.146096)]
+[203] tok=' '                  logprob=-0.131690  top=[(' ', -0.13169), (',', -5.06919), ('<|close|>', -6.38169), ('       ', -6.56919), ('s', -7.00669)]
+[204] tok=' '                  logprob=-0.369964  top=[(' ', -0.369964), ('.', -6.369964), ('\t', -6.401214), ('<|close|>', -6.432464), ('//', -6.494964)]
+[205] tok=' '                  logprob=-1.204197  top=[(' ', -1.204197), ('.', -2.610447), (',', -4.235447), (' "', -5.516697), (' the', -5.735447)]
+[206] tok='.'                  logprob=-4.600579  top=[('.', -4.600579), (',', -4.788079), ('       ', -6.381829), ('<|close|>', -6.913079), (':', -6.991204)]
+[207] tok=' '                  logprob=-4.679646  top=[(' ', -4.679646), (',', -5.367146), ('.', -5.460896), ('\t', -6.085896), ('<|close|>', -6.210896)]
+[208] tok=','                  logprob=-3.345505  top=[(',', -3.345505), (' ', -3.751755), ('.', -4.126755), ('<|close|>', -5.876755), ('\t', -6.064255)]
+[209] tok=' '                  logprob=-2.102098  top=[(' ', -2.102098), (',', -3.695848), ('.', -5.633348), (' "', -6.477098), (';', -6.555223)]
+[210] tok=' '                  logprob=-2.754935  top=[(' ', -2.754935), ('.', -5.817435), (',', -6.411185), ('\n', -6.629935), ('\t', -6.661185)]
+[211] tok=' '                  logprob=-0.314845  top=[(' ', -0.314845), ('<|close|>', -5.252346), ('.', -5.689846), ('\t', -6.033596), (' "', -6.189846)]
+[212] tok=','                  logprob=-2.339130  top=[(',', -2.33913), (' ', -4.52663), ('.', -4.99538), (' "', -6.27663), (' and', -6.43288)]
+[213] tok=','                  logprob=-3.928351  top=[(',', -3.928351), ('.', -4.55335), (' ', -4.5846), (';', -6.0221), ('       ', -6.568975)]
+[214] tok=' '                  logprob=-2.085239  top=[(' ', -2.085239), (',', -3.147739), ('.', -5.710239), ('<|close|>', -5.741489), ('       ', -5.928989)]
+[215] tok=' '                  logprob=-0.822388  top=[(' ', -0.822388), (',', -3.978638), ('.', -4.197389), ('\n', -6.041139), ('<|close|>', -6.353639)]
+[216] tok='.'                  logprob=-1.963989  top=[('.', -1.963989), (',', -2.651489), (' ', -2.651489), ('，', -4.088989), ('\n', -4.213989)]
+[217] tok=' '                  logprob=-3.284494  top=[(' ', -3.284494), ('.', -6.300118), (',', -6.690743), (' "', -6.690743), ('\n', -6.721993)]
+[218] tok=','                  logprob=-4.246982  top=[(',', -4.246982), (' ', -4.934482), ('.', -5.278232), ('\t', -5.778232), ('花', -5.871982)]
+[219] tok=' '                  logprob=-3.139772  top=[(' ', -3.139772), ('.', -5.546022), ('<|close|>', -6.046022), (',', -6.577272), ('\n', -6.608522)]
+[220] tok=' '                  logprob=-1.615554  top=[(' ', -1.615554), ('<|close|>', -5.803054), (',', -6.084304), (' "', -6.303054), (" '", -6.303054)]
+[221] tok=' '                  logprob=-1.424520  top=[(' ', -1.42452), ('.', -4.14327), (',', -4.67452), ('<|close|>', -5.70577), (';', -6.783895)]
+[222] tok=','                  logprob=-3.580395  top=[(',', -3.580395), (' ', -3.924145), ('.', -4.611646), ('-', -6.299146), ('<|close|>', -6.486646)]
+[223] tok=','                  logprob=-1.634439  top=[(',', -1.634439), ('.', -2.884439), ('一', -5.071939), (':', -5.290689), ('<|close|>', -5.603189)]
+[224] tok=' '                  logprob=-3.311143  top=[(' ', -3.311143), (',', -4.279893), ('.', -5.436143), ('<|close|>', -6.639268), ('\t', -7.264268)]
+[225] tok=' '                  logprob=-0.896636  top=[(' ', -0.896636), ('.', -3.990386), (',', -4.459136), ('<|close|>', -5.146636), ('\t', -5.802886)]
+[226] tok=' '                  logprob=-1.068832  top=[(' ', -1.068832), ('.', -4.068832), ('\t', -4.568832), (',', -4.850082), ('<|close|>', -5.475082)]
+[227] tok='.'                  logprob=-4.167960  top=[('.', -4.16796), (',', -4.54296), (' ', -6.16796), ('<|close|>', -6.79296), ('   ', -7.371085)]
+[228] tok='.'                  logprob=-5.156683  top=[('.', -5.156683), (' ', -5.406683), (',', -5.875433), ('\t', -6.156683), ('       ', -6.656683)]
+[229] tok=','                  logprob=-3.609722  top=[(',', -3.609722), ('.', -4.297222), (' ', -5.015972), (' "', -5.422222), (':', -5.984722)]
+[230] tok=' '                  logprob=-2.930611  top=[(' ', -2.930611), (',', -5.055612), ('.', -6.274362), ('<|close|>', -6.649362), ('\n', -6.852487)]
+[231] tok=' '                  logprob=-2.194231  top=[(' ', -2.194231), ('<|close|>', -6.100481), ('\t', -6.162981), ('       ', -6.225481), (',', -6.569231)]
+[232] tok=' '                  logprob=-0.487092  top=[(' ', -0.487092), ('\t', -5.330842), ('       ', -6.612092), ('   ', -6.955842), ('<|close|>', -7.018342)]
+[233] tok=','                  logprob=-0.650890  top=[(',', -0.65089), ('.', -2.96339), (';', -5.40089), ('return', -7.11964), ('   ', -7.27589)]
+[234] tok=','                  logprob=-0.777118  top=[(',', -0.777118), (' ', -3.339618), ('<|close|>', -5.245869), ('.', -5.777119), (' "', -5.808369)]
+[235] tok=' '                  logprob=-1.701511  top=[(' ', -1.701511), (',', -3.45151), (' "', -5.76401), ('       ', -6.13901), ('.', -6.38901)]
+[236] tok=' '                  logprob=-2.900343  top=[(' ', -2.900343), ('<|close|>', -5.400343), (',', -5.431593), ('.', -5.556593), ('\t', -5.712843)]
+[237] tok=' '                  logprob=-0.653297  top=[(' ', -0.653297), (',', -3.153297), ('.', -3.465797), ('<|close|>', -5.778297), ('   ', -6.434547)]
+[238] tok='.'                  logprob=-4.014745  top=[('.', -4.014745), (',', -5.108495), ('<|close|>', -6.202245), (' ', -6.420995), (':', -7.295995)]
+[239] tok=','                  logprob=-2.915278  top=[(',', -2.915278), (' ', -3.665278), ('.', -4.165278), ('       ', -6.493403), ('\n', -6.524653)]
+[240] tok=' '                  logprob=-5.257790  top=[(' ', -5.25779), ('<|close|>', -6.57029), ('               ', -6.75779), (',', -6.88279), ('.', -6.992165)]
+[241] tok=' '                  logprob=-3.254313  top=[(' ', -3.254313), ('.', -5.816813), (',', -6.457438), (' "', -6.691813), ('\t', -7.035563)]
+[242] tok=' '                  logprob=-1.978801  top=[(' ', -1.978801), (',', -3.853801), ('       ', -5.478801), ('\t', -5.541301), ('<|close|>', -6.322551)]
+[243] tok=','                  logprob=-2.173022  top=[(',', -2.173022), ('.', -3.329272), (' ', -4.016772), ('       ', -6.173022), ('\t', -6.469897)]
+[244] tok=','                  logprob=-3.851653  top=[(',', -3.851653), (' ', -4.414153), ('.', -5.101653), ('       ', -6.914153), ('<|close|>', -7.023528)]
+[245] tok=' '                  logprob=-3.009384  top=[(' ', -3.009384), (',', -3.696884), ('.', -5.509384), ('\t', -6.900009), ('\n', -7.228134)]
+[246] tok=' '                  logprob=-1.044775  top=[(' ', -1.044775), (',', -3.357275), ('.', -5.013525), ('<|close|>', -5.513525), ('\t', -6.3729)]
+[247] tok=' '                  logprob=-1.657807  top=[(' ', -1.657807), ('\t', -4.939057), ('.', -5.345307), ('}', -5.689057), ('       ', -5.845307)]
+[248] tok='.'                  logprob=-3.505028  top=[('.', -3.505028), (',', -4.630028), (' ', -6.005028), (' "', -7.145653), ('<|close|>', -7.536278)]
+[249] tok=','                  logprob=-3.491082  top=[(',', -3.491082), ('.', -3.678582), (' ', -3.772332), ('<|close|>', -6.428582), ('       ', -6.819207)]
+[250] tok=' '                  logprob=-3.018388  top=[(' ', -3.018388), (',', -3.643388), ('.', -5.237138), ('\n', -5.674638), ('<|close|>', -5.768388)]
+[251] tok=' '                  logprob=-0.972044  top=[(' ', -0.972044), ('       ', -5.815794), ('\n', -6.222044), ('   ', -6.503294), ('\t', -6.534544)]
+[252] tok=' '                  logprob=-1.690454  top=[(' ', -1.690454), (',', -5.659204), ('.', -6.627954), ('<|close|>', -6.846704), ('       ', -7.159204)]
+[253] tok='.'                  logprob=-4.136468  top=[('.', -4.136468), (' ', -4.542718), (',', -4.667718), ('       ', -7.027093), ('<|close|>', -7.058343)]
+[254] tok=','                  logprob=-2.735298  top=[(',', -2.735298), (' ', -4.110298), ('.', -4.610298), ('\t', -6.297798), ('       ', -6.438423)]
+[255] tok=' '                  logprob=-0.952970  top=[(' ', -0.95297), (',', -5.23422), (' and', -6.29672), ('<|close|>', -6.531095), ('\n', -6.718595)]
+```
+
+### leg=`baseline-tp64-pp1-dp4` (port=30543, reasoning=low, greedy, top_logprobs=5, http=200)
+```text
+finish_reason: stop
+matched_stop: 163586
+content: '你好！我是 Kimi，由 Moonshot AI（月之暗面）开发的 AI 助手。我可以帮你回答问题、写作、翻译、总结资料、编程调试、头脑风暴等。有什么我可以帮你的吗？'
+reasoning_content: '用户用中文问候并要求介绍自己。需要简洁中文回答。说明我是Kimi，由Moonshot AI（月之暗面）开发，能帮忙问答、写作、编程、翻译等。避免过度。 final in Chinese.'
+--- token logprobs (top_k=5) ---
+[  0] tok='用户'                 logprob=-0.075197  top=[('用户', -0.075197), ('The', -3.575197), ('User', -4.075197), ('We', -4.325197), ('你好', -5.450197)]
+[  1] tok='用'                  logprob=-0.056166  top=[('用', -0.056166), ('问', -4.056166), ('要求', -4.431166), ('问候', -4.681166), ('中文', -5.056166)]
+[  2] tok='中文'                 logprob=-0.000096  top=[('中文', -9.6e-05), ('简体中文', -10.312596), ('汉语', -11.062596), ('普通话', -11.937596), ('问候', -12.125096)]
+[  3] tok='问候'                 logprob=-0.552487  top=[('问候', -0.552487), ('问好', -1.552487), ('打招呼', -2.427487), ('问', -2.552487), ('说', -4.552486)]
+[  4] tok='并要求'                logprob=-0.582271  top=[('并要求', -0.582271), ('并', -1.082271), ('，', -2.957271), ('并请', -3.707271), ('并让', -4.582271)]
+[  5] tok='介绍'                 logprob=-0.070154  top=[('介绍', -0.070154), ('自我介绍', -2.695154), ('自我', -9.445154), ('我', -9.945154), ('介绍一下', -10.570154)]
+[  6] tok='自己'                 logprob=-0.011951  top=[('自己', -0.011951), ('你自己', -4.63695), ('我自己', -6.26195), ('。', -8.63695), ('自我', -10.13695)]
+[  7] tok='。'                  logprob=-0.001389  top=[('。', -0.001389), ('，', -7.001389), ('.', -8.563889), ('。\n', -9.938889), ('（', -10.251389)]
+[  8] tok='需要'                 logprob=-0.406041  top=[('需要', -0.406041), ('需要用', -1.406041), ('系统', -3.781041), ('根据', -4.531041), ('现在', -5.031041)]
+[  9] tok='简洁'                 logprob=-0.766761  top=[('简洁', -0.766761), ('回答', -1.766761), ('中文', -2.391761), ('自然', -3.141761), ('简明', -3.141761)]
+[ 10] tok='中文'                 logprob=-0.257963  top=[('中文', -0.257963), ('友好', -2.507963), ('回答', -2.882963), ('用', -3.757963), ('自然', -4.007963)]
+[ 11] tok='回答'                 logprob=-0.049405  top=[('回答', -0.049405), ('介绍', -4.174405), ('自我介绍', -4.299405), ('回复', -4.549405), ('回应', -5.049405)]
+[ 12] tok='。'                  logprob=-0.094652  top=[('。', -0.094652), ('，', -2.469652), ('：', -5.469652), ('身份', -7.219652), ('介绍', -8.594652)]
+[ 13] tok='说明'                 logprob=-0.451678  top=[('说明', -0.451678), ('提及', -2.076678), ('需要', -2.826678), ('介绍', -3.076678), ('应', -3.951678)]
+[ 14] tok='我是'                 logprob=-0.275927  top=[('我是', -0.275927), ('是', -2.275927), ('自己是', -2.275927), ('身份', -4.025927), ('当前', -4.275927)]
+[ 15] tok='K'                  logprob=-0.454110  top=[('K', -0.45411), (' Kim', -1.07911), ('AI', -4.07911), ('Kim', -6.07911), (' AI', -6.20411)]
+[ 16] tok='imi'                logprob=-0.000016  top=[('imi', -1.6e-05), ('iro', -12.500016), ('ilo', -13.000016), ('omo', -13.000016), ('IM', -13.437516)]
+[ 17] tok='，'                  logprob=-0.000438  top=[('，', -0.000438), ('/', -8.500438), (',', -9.500438), ('（', -10.000438), ('等', -11.187938)]
+[ 18] tok='由'                  logprob=-0.000405  top=[('由', -0.000405), ('Moon', -8.625404), ('月', -8.875404), ('AI', -10.250404), ('来自', -11.250404)]
+[ 19] tok='Moon'               logprob=-0.093759  top=[('Moon', -0.093759), ('月', -2.593759), (' Moon', -4.218759), ('月亮', -11.843759), ('M', -12.031259)]
+[ 20] tok='shot'               logprob=-0.000029  top=[('shot', -2.9e-05), (' AI', -10.875029), ('sh', -12.250029), ('shots', -12.875029), ('shoot', -14.062529)]
+[ 21] tok=' AI'                logprob=-0.000011  top=[(' AI', -1.1e-05), ('AI', -12.00001), ('开发', -13.37501), ('/', -13.93751), (' Al', -14.06251)]
+[ 22] tok='（'                  logprob=-0.318056  top=[('（', -0.318056), ('开发', -1.943056), ('/', -2.193056), ('月', -4.068056), ('(', -8.318056)]
+[ 23] tok='月'                  logprob=-0.000006  top=[('月', -6e-06), ('Moon', -13.125006), ('月亮', -13.500006), (' Moon', -14.500006), (' moon', -14.687506)]
+[ 24] tok='之'                  logprob=-0.000001  top=[('之', -1e-06), ('暗', -14.875001), ('の', -15.937501), ('相', -16.750002), ('�', -16.750002)]
+[ 25] tok='暗'                  logprob=-0.000002  top=[('暗', -2e-06), ('之', -14.187502), ('暗暗', -14.375002), (' dark', -15.000002), ('暗影', -15.437502)]
+[ 26] tok='面'                  logprob=-0.000002  top=[('面', -2e-06), ('点', -14.000002), ('方', -15.437502), ('之', -16.125002), ('面的', -16.437502)]
+[ 27] tok='）'                  logprob=-0.000068  top=[('）', -6.8e-05), (')', -10.250069), ('开发', -10.937569), ('/', -11.812569), ('）。', -13.187569)]
+[ 28] tok='开发'                 logprob=-0.000331  top=[('开发', -0.000331), ('研发', -8.500331), ('开发的', -9.250331), (' developed', -11.500331), ('開発', -12.625331)]
+[ 29] tok='，'                  logprob=-0.472900  top=[('，', -0.4729), ('。', -1.097901), ('；', -3.4729), ('的人工智能', -4.4729), ('（', -7.7229)]
+[ 30] tok='能'                  logprob=-0.330533  top=[('能', -0.330533), ('能提供', -2.830533), ('可以', -3.330533), ('能帮助', -3.330533), ('能够', -3.705533)]
+[ 31] tok='帮忙'                 logprob=-0.869059  top=[('帮忙', -0.869059), ('回答问题', -1.119059), ('做什么', -2.494059), ('协助', -2.619059), ('问答', -2.994059)]
+[ 32] tok='问答'                 logprob=-0.119267  top=[('问答', -0.119267), ('回答问题', -2.869267), ('答疑', -3.119267), ('写作', -5.619267), ('编程', -5.744267)]
+[ 33] tok='、'                  logprob=-0.000041  top=[('、', -4.1e-05), ('写作', -10.750041), ('编程', -11.062541), ('/', -13.875041), ('等', -14.250041)]
+[ 34] tok='写作'                 logprob=-0.062315  top=[('写作', -0.062315), ('编程', -2.812315), ('翻译', -8.937315), ('学习', -9.187315), ('写', -9.437315)]
+[ 35] tok='、'                  logprob=-0.000091  top=[('、', -9.1e-05), ('编程', -9.375091), ('等', -13.062591), ('翻译', -13.562591), ('/', -14.312591)]
+[ 36] tok='编程'                 logprob=-0.000724  top=[('编程', -0.000724), ('翻译', -7.750724), ('代码', -8.250724), ('编码', -11.000724), (' coding', -11.625724)]
+[ 37] tok='、'                  logprob=-0.023262  top=[('、', -0.023262), ('等', -3.773262), ('翻译', -11.273262), (' etc', -13.210762), ('总结', -14.773262)]
+[ 38] tok='翻译'                 logprob=-0.008074  top=[('翻译', -0.008074), ('总结', -5.258074), ('学习', -5.883074), ('分析', -11.133074), ('整理', -11.133074)]
+[ 39] tok='等'                  logprob=-0.428773  top=[('等', -0.428773), ('、', -1.053773), ('总结', -10.053773), (' etc', -10.928773), ('学习', -12.178773)]
+[ 40] tok='。'                  logprob=-0.005972  top=[('。', -0.005972), ('，', -5.255972), ('；', -7.255972), ('。\n\n', -12.193472), ('。\n', -12.255972)]
+[ 41] tok='避免'                 logprob=-0.244006  top=[('避免', -0.244006), ('语气', -1.994006), ('保持', -3.494006), ('不要', -4.244006), ('背景', -4.994006)]
+[ 42] tok='过度'                 logprob=-0.256071  top=[('过度', -0.256071), ('夸大', -2.131071), ('夸', -3.506071), ('提及', -3.506071), ('声称', -4.006072)]
+[ 43] tok='。'                  logprob=-0.730866  top=[('。', -0.730866), ('细节', -1.230866), ('吹嘘', -2.480865), ('夸大', -2.980865), ('详细', -3.730865)]
+[ 44] tok=' final'             logprob=-1.202534  top=[(' final', -1.202534), ('最终', -1.452534), ('<|close|>', -2.327534), ('现在', -2.827534), ('由于', -2.952534)]
+[ 45] tok=' in'                logprob=-0.613324  top=[(' in', -0.613324), (' only', -0.863324), ('用', -4.363324), ('中文', -4.863324), ('.', -5.738324)]
+[ 46] tok=' Chinese'           logprob=-0.000004  top=[(' Chinese', -4e-06), ('Chinese', -13.000004), ('中文', -13.812504), (' chinese', -14.625004), (' ', -15.437504)]
+[ 47] tok='.'                  logprob=-0.000593  top=[('.', -0.000593), ('.\n', -9.313092), (',', -10.188092), (' ', -11.031842), ('。', -11.438092)]
+[ 48] tok='<|close|>'          logprob=-0.057359  top=[('<|close|>', -0.057359), (' ', -3.932359), (' Need', -4.557359), (' Ensure', -4.557359), (' Done', -4.932359)]
+[ 49] tok='think'              logprob= 0.000000  top=[('think', 0.0), (' think', -18.75), ('Think', -19.0), ('thinking', -19.25), ('thought', -20.375)]
+[ 50] tok='<|sep|>'            logprob= 0.000000  top=[('<|sep|>', 0.0), ('<|open|>', -23.625), ('<|close|>', -24.75), ('，', -29.75), ('  \n', -30.8125)]
+[ 51] tok='<|open|>'           logprob= 0.000000  top=[('<|open|>', 0.0), ('<|close|>', -22.875), ('response', -25.4375), ('你好', -27.5), (' response', -27.5625)]
+[ 52] tok='response'           logprob=-0.000000  top=[('response', -0.0), (' response', -15.875), ('responses', -17.375), ('Response', -18.25), ('_response', -19.0)]
+[ 53] tok='<|sep|>'            logprob= 0.000000  top=[('<|sep|>', 0.0), ('<|close|>', -29.875), ('你好', -31.25), ('：', -33.0), ('\n', -34.0625)]
+[ 54] tok='你好'                 logprob=-0.000006  top=[('你好', -6e-06), ('大家好', -13.750006), ('您好', -13.750006), ('我是', -13.937506), ('<|close|>', -14.062506)]
+[ 55] tok='！'                  logprob=-0.026308  top=[('！', -0.026308), ('，', -3.651308), ('呀', -12.151308), ('：', -14.276308), ('我是', -14.526308)]
+[ 56] tok='我是'                 logprob=-0.000097  top=[('我是', -9.7e-05), ('我叫', -9.375096), ('我', -12.625096), ('我是一个', -13.125096), ('我是一名', -13.625096)]
+[ 57] tok=' Kim'               logprob=-0.001362  top=[(' Kim', -0.001362), (' **', -6.626361), ('K', -10.501362), (' kimi', -13.126362), (' Ki', -13.813862)]
+[ 58] tok='i'                  logprob=-0.000000  top=[('i', -0.0), ('，', -15.4375), ('ii', -17.625), ('im', -18.5625), ('o', -19.0625)]
+[ 59] tok='，'                  logprob=-0.000001  top=[('，', -1e-06), ('،', -15.125001), ('（', -15.437501), (' ，', -15.437501), (' ', -15.812501)]
+[ 60] tok='由'                  logprob=-0.000031  top=[('由', -3.1e-05), ('是由', -10.750031), ('一个', -12.500031), ('一款', -13.250031), ('由北京', -13.812531)]
+[ 61] tok=' Moon'              logprob=-0.003631  top=[(' Moon', -0.003631), ('月', -5.628632), ('Moon', -10.878632), (' Month', -12.941132), ('月亮', -13.253632)]
+[ 62] tok='shot'               logprob=-0.000002  top=[('shot', -2e-06), ('light', -14.625002), ('shine', -14.875002), ('set', -15.250002), ('ship', -15.250002)]
+[ 63] tok=' AI'                logprob=-0.000002  top=[(' AI', -2e-06), (' Al', -14.125002), ('AI', -14.687502), ('（', -15.125002), (' A', -16.000002)]
+[ 64] tok='（'                  logprob=-0.000003  top=[('（', -3e-06), ('「', -13.812503), ('月', -13.937503), (' ', -14.375003), ('(', -14.500003)]
+[ 65] tok='月'                  logprob=-0.000003  top=[('月', -3e-06), ('월', -14.625003), ('月亮', -15.562503), ('月月', -15.875003), (' moon', -16.125002)]
+[ 66] tok='之'                  logprob=-0.000002  top=[('之', -2e-06), ('の', -15.875002), ('神', -16.000002), ('暗', -16.125002), ('见', -17.062502)]
+[ 67] tok='暗'                  logprob=-0.000001  top=[('暗', -1e-06), ('暗中', -15.625001), ('暗暗', -15.937501), (' dark', -16.125002), ('隐', -16.250002)]
+[ 68] tok='面'                  logprob=-0.000441  top=[('面', -0.000441), ('点', -8.937942), ('月', -9.937942), ('间', -10.937942), ('心', -11.062942)]
+[ 69] tok='）'                  logprob=-0.000005  top=[('）', -5e-06), (')', -12.562505), ('开发的', -14.250005), ('》', -15.437505), ('开发', -15.687505)]
+[ 70] tok='开发的'                logprob=-0.001482  top=[('开发的', -0.001482), ('开发', -6.626482), ('研发的', -9.626482), ('推出的', -9.876482), ('打造的', -11.251482)]
+[ 71] tok=' AI'                logprob=-0.000829  top=[(' AI', -0.000829), ('助手', -8.125829), ('智能', -8.250829), ('AI', -8.250829), ('人工智能', -12.625829)]
+[ 72] tok=' '                  logprob=-0.000047  top=[(' ', -4.7e-05), ('.', -12.468797), (' of', -13.375047), (',', -14.125047), (' to', -14.156297)]
+[ 73] tok='助手'                 logprob=-0.000043  top=[('助手', -4.3e-05), ('助理', -10.125043), (' assistant', -13.000043), ('assistant', -14.500043), ('助', -15.250043)]
+[ 74] tok='。'                  logprob=-0.000183  top=[('。', -0.000183), ('。\n\n', -8.625183), ('，', -13.375183), ('。\n', -14.687683), ('。**', -15.750183)]
+[ 75] tok='我可以'                logprob=-0.007889  top=[('我可以', -0.007889), ('  \n', -5.382889), ('可以', -6.257889), ('我', -7.382889), ('你可以', -8.132889)]
+[ 76] tok='帮你'                 logprob=-0.006055  top=[('帮你', -0.006055), ('帮助你', -5.256055), ('陪你', -7.756055), ('帮忙', -8.131055), ('帮助', -9.881055)]
+[ 77] tok='回答问题'               logprob=-0.162318  top=[('回答问题', -0.162318), ('解答', -2.537318), ('问答', -2.787318), ('答疑', -5.537318), ('答疑解惑', -5.787318)]
+[ 78] tok='、'                  logprob=-0.000002  top=[('、', -2e-06), ('写作', -14.250002), ('，', -15.437502), ('写', -15.625002), ('写文章', -16.625002)]
+[ 79] tok='写作'                 logprob=-0.576568  top=[('写作', -0.576568), ('整理', -0.951568), ('写', -3.076568), ('写文章', -5.701569), ('解释', -6.951569)]
+[ 80] tok='、'                  logprob=-0.623827  top=[('、', -0.623827), ('与', -1.623827), ('润', -1.623827), ('/', -3.123827), ('改', -4.623827)]
+[ 81] tok='翻译'                 logprob=-0.444821  top=[('翻译', -0.444821), ('改', -1.694821), ('总结', -2.319821), ('润', -3.069821), ('改写', -3.944821)]
+[ 82] tok='、'                  logprob=-0.000010  top=[('、', -1e-05), ('总结', -12.00001), ('编程', -14.12501), ('整理', -14.81251), ('，', -15.50001)]
+[ 83] tok='总结'                 logprob=-0.275847  top=[('总结', -0.275847), ('编程', -1.650847), ('整理', -3.025847), ('写', -9.150847), (' summar', -9.400847)]
+[ 84] tok='资料'                 logprob=-0.600189  top=[('资料', -0.600189), ('、', -1.225189), ('文档', -1.850189), ('文献', -8.850189), ('材料', -8.975189)]
+[ 85] tok='、'                  logprob=-0.000011  top=[('、', -1.1e-05), ('编程', -12.31251), ('写', -13.50001), ('，', -14.12501), (' debug', -14.93751)]
+[ 86] tok='编程'                 logprob=-0.238817  top=[('编程', -0.238817), ('写', -2.113817), ('调试', -3.113817), ('编写', -3.488817), ('辅助', -4.863817)]
+[ 87] tok='调试'                 logprob=-0.125610  top=[('调试', -0.12561), ('、', -2.37561), (' debug', -4.62561), ('debug', -5.25061), (' Debug', -5.50061)]
+[ 88] tok='、'                  logprob=-0.000038  top=[('、', -3.8e-05), ('头脑', -11.500038), ('等', -11.687538), (' brainstorm', -12.062538), ('，', -12.500038)]
+[ 89] tok='头脑'                 logprob=-0.313368  top=[('头脑', -0.313368), (' brainstorm', -1.813367), ('整理', -3.063368), (' brainstorming', -3.063368), ('梳理', -5.438367)]
+[ 90] tok='风暴'                 logprob=-0.000290  top=[('风暴', -0.00029), ('创意', -8.37529), ('灵感', -11.00029), ('等', -11.50029), ('storm', -11.68779)]
+[ 91] tok='等'                  logprob=-0.000062  top=[('等', -6.2e-05), ('，', -10.000062), ('、', -12.250062), ('和', -12.500062), ('创意', -12.875062)]
+[ 92] tok='。'                  logprob=-0.000034  top=[('。', -3.4e-05), ('。\n\n', -10.875034), ('，', -11.937534), ('；', -12.625034), ('。**', -14.250034)]
+[ 93] tok='有什么'                logprob=-1.219125  top=[('有什么', -1.219125), ('你可以', -1.344125), ('请', -1.719125), ('告诉我', -1.844125), ('你有什么', -2.844125)]
+[ 94] tok='我可以'                logprob=-0.131585  top=[('我可以', -0.131585), ('想', -2.256585), ('需要', -4.381585), ('我能', -5.381585), ('我', -7.131585)]
+[ 95] tok='帮'                  logprob=-0.000234  top=[('帮', -0.000234), ('协助', -9.000235), ('帮你', -9.625235), ('帮忙', -10.625235), ('帮助', -11.125235)]
+[ 96] tok='你的'                 logprob=-0.000010  top=[('你的', -1e-05), (' your', -12.00001), ('您的', -12.87501), ('到你的', -14.12501), ('上的', -16.06251)]
+[ 97] tok='吗'                  logprob=-0.001034  top=[('吗', -0.001034), ('？', -6.876034), ('，', -14.876034), ('呢', -14.876034), ('的吗', -14.876034)]
+[ 98] tok='？'                  logprob=-0.000001  top=[('？', -1e-06), ('？\n', -14.625001), ('？\n\n', -15.750001), ('<|close|>', -15.750001), ('?', -16.375002)]
+[ 99] tok='<|close|>'          logprob=-0.000002  top=[('<|close|>', -2e-06), ('�', -13.750002), (' �', -15.000002), ('</', -17.062502), ('）', -17.062502)]
+[100] tok='response'           logprob= 0.000000  top=[('response', 0.0), (' response', -16.875), ('Response', -21.0), ('respond', -21.25), ('responses', -21.25)]
+[101] tok='<|sep|>'            logprob= 0.000000  top=[('<|sep|>', 0.0), ('<|close|>', -29.125), (' message', -35.6875), ('<|end_of_msg|>', -36.375), (' ', -37.0)]
+[102] tok='<|close|>'          logprob=-0.000000  top=[('<|close|>', -0.0), ('<|end_of_msg|>', -14.75), ('<|open|>', -17.0), ('message', -19.75), (' message', -19.8125)]
+[103] tok='message'            logprob= 0.000000  top=[('message', 0.0), (' message', -20.0), ('Message', -20.625), ('_message', -21.5), ('-message', -22.375)]
+[104] tok='<|sep|>'            logprob= 0.000000  top=[('<|sep|>', 0.0), ('<|end_of_msg|>', -27.25), ('[EOS]', -29.9375), ('Message', -31.9375), (' index', -32.71875)]
+[105] tok='<|end_of_msg|>'     logprob= 0.000000  top=[('<|end_of_msg|>', 0.0), ('<|open|>', -26.25), ('<|close|>', -29.9375), ('message', -30.875), ('[EOS]', -31.875)]
+```
+
+[ARCHIVE_SEGMENT_END]

@@ -11,6 +11,7 @@ description: >-
 
 > 概念部分（`--moe-a2a-backend` 语义、normal/low-latency dispatch 机制）
 > 见 [`../../knowledge/npu/deepep-ascend-npu.md`](../../knowledge/npu/deepep-ascend-npu.md)。
+> K3 的项目路由、版本边界与相关案例见 [`../../projects/kimi-k3/`](../../projects/kimi-k3/README.md)。
 > 本文只讲**怎么查**。
 
 ## §0 先分清「真超时」还是「卡死后被超时兜住」

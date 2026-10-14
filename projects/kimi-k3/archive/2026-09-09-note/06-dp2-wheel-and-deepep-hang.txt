@@ -1,0 +1,159 @@
+## 9. 2026-08-29 记录：上一次成功跑法 dp2pp4tp16.sh（PR 验证用的 known-good recipe）
+
+**成功定义：开了 DP attention 之后精度正常**（乱码消失、输出通顺、logprob 正常）。
+**证据**：`grab-logprobs/dp2-pp4-tp16-nodump-2026-08-28_19-53-00.txt` — http=200，115 token，完整通顺的中文回答（"你好！我是 Kimi，由 Moonshot AI…"），greedy top-1 logprob 多数接近 0、top-5 分布合理。乱码腿的表现是 garbage token + 高熵分布，一眼可辨。
+
+### 9.1 跑的东西（2026-08-28 成功会话）
+- 脚本：`/home/<USER>/K3/dp2pp4tp16.sh`，4 机 `<NODE_A> / <NODE_B> / <NODE_C> / <NODE_D>`（rank 0-3，脚本按 IP 自检 NODE_RANK）
+- sglang 代码：`PYTHONPATH=/home/<USER>/personal/sglang/python`（日志里进程 env 的值可证）。运行时工作树在 **k3-cpp 分支**（reflog：08-25 14:44 从 k3-pp 切到 k3-cpp，08-26 有一次 rebase，直到 08-29 15:05 才切去 k3cppp）= PR 的来源分支（核心修复 + debug 打印都在）
+- kernel：**容器里已装的 wheel**（运行与 kernel 仓 checkout 无关）：4 台实测一致 `sgl_kernel_npu 2026.6.1`、`deep_ep 1.0.0+f7455efe.cann.9.0.0.b250`。成功跑之后没有重建/重装过 kernel，**镜像没变**（`<PRIVATE_IMAGE>`，容器 `<CONTAINER>`）
+- 服务日志：`logs/dp2pp4tp16-2026-08-28_11-28-45.log` / `logs/dp2pp4tp16-2026-08-28_11-46-07.log`（均有 "ready to roll" 和 200 OK；进程 env 确认 `SGLANG_K3_SHARED_EXPERTS_ATTN_TP=1`、`SGLANG_K3_DENSE_MLP_ATTN_TP=1`；rank 标签带 EP = DeepEP on）
+
+### 9.2 成功配方（关键参数，缺一不可）
+```
+--tp-size 16 --pp-size 4 --dp-size 2 --enable-dp-attention   # 64 卡 = tp×pp；attn_tp = tp/dp = 8
+--moe-a2a-backend deepep --deepep-mode auto                  # DeepEP on
+SGLANG_PP_LAYER_PARTITION=24,23,23,23                          # 93 层分 4 段（脚本按层数自动设）
+SGLANG_K3_SHARED_EXPERTS_ATTN_TP=1                            # k3-cpp/k3-pp 代码用 env 读取
+SGLANG_K3_DENSE_MLP_ATTN_TP=1
+chunked-prefill 8192 / mem-fraction-static 0.72 / disable-cuda-graph / port 30543 / dist-init 30143
+```
+原理：DeepEP 下 shared expert 的 token 切分必须与 attn_tp 的权重切分一致，所以必须开 DP attention；而 `dp_size=1` 时框架会自动把 dp attention 关掉（arg_groups/overrides.py 归一化）→ 之前所有 tp16 pp1 腿实际都是 dp-off，所以乱码。**DP attention + DeepEP + SHARED_EXPERTS_ATTN_TP 三个条件必须同时开**。
+
+### 9.3 ⚠️ 今晚用 k3cppp（PR 分支）复现前必须改两处
+1. **脚本第 9 行 PYTHONPATH 现在指向 community**（08-29 01:29 跑 community 腿时改的；该腿 8 小时从未 ready、从未服务过请求，最后 BrokenPipe 挂掉：`logs/dp2pp4tp16-2026-08-29_01-29-22.log`）。复现成功跑法先改回 personal：
+   ```bash
+   sed -i 's|community/sglang/python|personal/sglang/python|' /home/<USER>/K3/dp2pp4tp16.sh
+   ```
+2. **k3cppp 把这两个开关从 env 变量改成了启动参数**：kimi_k3.py 现在读 `get_parallel().enable_shared_experts_attn_tp` / `enable_dense_mlp_attn_tp`（server_args.py 里默认 False；k3cppp 全树已搜不到 `SGLANG_K3_SHARED_EXPERTS_ATTN_TP` 的 env 读取）→ 脚本里那两个 env 变量在 k3cppp 下是 **no-op**！必须在 `launch_server` 参数里加上（建议加在 `--enable-dp-attention` 那行后面）：
+   ```bash
+   --enable-shared-experts-attn-tp \
+   --enable-dense-mlp-attn-tp \
+   ```
+   不加 = 这两个开关实际没开。k3-pp/k3-cpp 用 env、k3cppp 必须 arg，别搞混。
+3. （提醒）kernel 仓的改动要生效必须重装 wheel（build sgl-kernel-npu / deep_ep 后 pip install 到 4 台容器）；不重装的话跑的就是已装旧包——旧包本身含 conv dtype 修复、能跑通，别被"代码一样为什么结果不一样"骗（见 stash 那条教训）。
+
+### 9.4 复现命令（4 机）
+```bash
+# 0) 先做 9.3 的两处修改
+# 1) kill 4 台
+for ip in <NODE_A> <NODE_B> <NODE_C> <NODE_D>; do ssh -o BatchMode=yes -f <USER>@<SUBNET>.$ip \
+  "cd /home/<USER>/K3 && bash kill_sglang.sh"; done
+sleep 30
+# 2) <NODE_A> 先启（rank0 / dist-init），90s 后其余 3 台
+ssh -f <USER>@<NODE_A> "cd /home/<USER>/K3 && setsid nohup bash dp2pp4tp16.sh </dev/null >/dev/null 2>&1 & disown -h"
+sleep 90
+for ip in <NODE_B> <NODE_C> <NODE_D>; do ssh -f <USER>@<SUBNET>.$ip \
+  "cd /home/<USER>/K3 && setsid nohup bash dp2pp4tp16.sh </dev/null >/dev/null 2>&1 & disown -h"; done
+# 3) 等 health 200
+for i in {1..20}; do sleep 30; s=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://localhost:30543/health); [ "$s" = 200 ] && break; done
+# 4) 抓 logprob 验证精度
+cd /home/<USER>/K3 && MODEL=<MODEL_PATH> PORT=30543 bash grab_logprob.sh dp2-pp4-tp16-k3cppp
+```
+成功判据：http=200 + 回答通顺（参考证据文件）+ greedy top-1 logprob 多数接近 0。
+
+### 9.5 PR 分支（都已推到 fork；<NODE_A> 两仓当前就 checkout 在 k3cppp）
+- `JinyanYi/sglang` 分支 `k3cppp` @ `ccaf0adc96`：hybrid MLA KV 按 layer-id 配对 + W4A8 量化加载修复
+- `JinyanYi/sgl-kernel-npu` 分支 `k3cppp` @ `f89ddee`：`f3903b3` conv state dtype 修复 + `f89ddee` notify dispatch UB 修复
+- k3cppp = 成功跑所用代码（sglang k3-cpp / kernel k3-pp）的核心修复、去掉 debug 提交的干净版，预期数值等价——按 §9.4 复现成功即验证这一点
+
+### 9.6 对照实验计划（验证 PR）
+1. 纯 community sglang（脚本当前 PYTHONPATH 就是它）+ 现有 kernel → 预期 W4A8 量化加载失败。已有半份答案：08-29 01:29 的 community 腿 8h 从未 ready（`logs/dp2pp4tp16-2026-08-29_01-29-22.log`）；重跑抓具体报错点
+2. k3cppp + tp16 pp4 dp2 + DeepEP + 两个启动参数 → 预期复现 §9 成功
+3. decode 阶段无 EZ1001 报错 → 单独验证 kernel `f3903b3`（前提：重装 k3cppp 的 kernel wheel）
+
+
+### §9.4 k3cppp PR 分支精度验证（2026-08-29 13:31）
+
+- 环境：四机 <NODE_A>/<NODE_B>/<NODE_C>/<NODE_D>，容器不变，`personal/sglang@k3cppp` + `personal/sgl-kernel-npu@k3cppp`
+- 启动：`dp2pp4tp16.sh`（PYTHONPATH 指向 personal/sglang），CLI 旗标 `--enable-shared-experts-attn-tp --enable-dense-mlp-attn-tp`，server_args 回显均为 True
+- 验证命令：`MODEL=<MODEL_PATH> PORT=30543 bash grab_logprob.sh dp2-pp4-tp16-k3cppp`
+- 对照基线：`grab-logprobs/dp2-pp4-tp16-nodump-2026-08-28_19-53-00.txt`（8-28 k3-cpp + env 变量的成功跑法）
+- 结果：两侧各 115 token，token 序列仅 3 处分词边界差异（" Kim"+"i" vs "K"+"imi"、" Moon" vs "Moon"，文本等价）；content 逐字符一致；finish_reason=stop；logprob 全程健康；无乱码
+- 结论：k3cppp 分支 CLI 旗标方案与 k3-cpp env 变量方案输出等价，PR 精度对齐验证通过；新证据文件 `grab-logprobs/dp2-pp4-tp16-k3cppp-2026-08-29_13-31-43.txt`
+
+## 10. 2026-08-29/30 kernel wheel 重装（f3903b3 PR 验证）+「后续请求卡死」根因定位
+
+### 10.1 重装过程（4 台容器，全部完成并验证）
+- 目的：把容器里的 kernel 从「8-20 手工补丁版」换成 PR 分支 k3cppp 构建的正式 wheel，验证 `f3903b3`（causal_conv1d conv_state fp32→bf16 修复）
+- 源码：`/home/<USER>/personal/sgl-kernel-npu` @ k3cppp（`f89ddee`，含 conv dtype 修复 + notify_dispatch UB 修复）
+- 每台容器内构建（包装脚本留档 /tmp/kbuild_inner.sh，日志 /home/<USER>/kernel_build_k3cppp.log）：
+  ```bash
+  source /usr/local/Ascend/ascend-toolkit/set_env.sh
+  source /usr/local/Ascend/nnal/atb/set_env.sh   # 构建脚本里绝不能 set -u：atb set_env.sh 会读未定义的 ZSH_VERSION 直接退出
+  cd /home/<USER>/personal/sgl-kernel-npu
+  rm -rf output/ outputs/ && VERSION=2026.6.1 bash build.sh -a kernels
+  pip install output/sgl_kernel_npu-2026.6.1-*.whl --force-reinstall --no-deps
+  ```
+- 装入时间（site-packages mtime，容器时钟）：<NODE_A> 14:39:35 / <NODE_B> 14:39:36 / <NODE_C> 14:39:43 / <NODE_D> 14:39:56
+- 装后验证（kverify2.sh 4 台全过）：`conv_state_update.to(` cast 标记在位、`import sgl_kernel_npu` 正常
+
+### 10.2 f3903b3 精度验证：PASS（可 endorsing kernel PR）
+- 14:42 run（新 wheel，其余配方与 §9 完全一致）：logprob 抓取 200 OK、115 token
+- 对照 `grab-logprobs/dp2-pp4-tp16-k3cppp-newwheel-2026-08-29_14-53-36.txt`（新 wheel）vs `...k3cppp-2026-08-29_13-31-43.txt`（旧 wheel）：token 序列一致、logprob 差异在噪声级、finish_reason=stop、无乱码
+- 服务期全程无 EZ1001 / AclNN 报错 → conv dtype 修复有效、无副作用
+- ⚠️ 更正一条旧结论：8-29 晚曾记「determinism rerun 通过」不成立——`grab-logprobs/newwheel-rerun-2026-08-29_15-05-52.txt` 只有 4 行且响应 unparseable，rerun 请求正是 15:05 触发崩溃的那个请求，从未完成。单次精度对照（10.2 第 2 条）依然有效
+
+### 10.3 「后续请求卡死 → ~10 分钟后崩溃」：与 kernel wheel 无关（已三重确认）
+**完整现象（8-30 00:26 复现实验，逐秒记录）**：
+1. 16:26 服务 healthy；此前 4 次 health 生成 + REQ1（chat 21s，200 OK）全部正常
+2. 16:26:53 REQ2 发出 → **240s 客户端超时**；服务端连 `Prefill batch` 日志都没有（请求没进 scheduler 事件循环），`/health` 同时开始 8s 超时
+3. 16:36:25（卡死开始后 9m32s）<NODE_D>（PP3 末级）EZ9999 aicore timeout → <NODE_A>/<NODE_D> 全部 scheduler 进程异常退出（exit code -3），服务死亡
+- 同模式历史记录：8-29 14:42 run（崩溃 15:05:37）、15:08 run（崩溃 15:29:14），间隔同样是「请求卡死起点 + ~9.5-10 分钟」= NPU aicore 超时窗口
+
+**旧 wheel 也有同一问题（换 wheel 前后行为一致）**：
+- 8-29 00:59 run（旧 wheel）：第 1 请求 01:08:30 完成后，第 2 请求 01:13:02 prefill 后永远不 decode、无任何报错、服务挂死（同一卡死，当时被 kill 没等到 aicore 超时）
+- 8-29 13:16 run（旧 wheel）：第 1 请求完成后**纯空闲 47 分钟无自发崩溃**（14:18:10 的 SIGTERM 是重装前手动 kill；worker 日志里的 exception 是关停痕迹，不是崩溃证据）
+- 结论：卡死是 sglang 侧（scheduler 事件循环 / PP 跨机同步）的固有竞态，**先于 wheel 重装就存在**；新 wheel 只是把「静默挂死」变成了「EZ9999 超时崩溃」
+
+**根因推断**：dp2 + pp4 + dp-attention 下，某请求完成后 PP 流水线遗留不一致状态（PP 末级反向同步或 DP gather 未正确收尾），scheduler 事件循环不再处理任何新消息（连 health 都超时），卡住的 aicore op 在 ~9.5-10 分钟后被 NPU 超时机制打断 → 进程退出。修复需要改 sglang 调度/同步逻辑，属后续工作，不阻塞 kernel PR。
+
+### 10.4 操作结论与当前服务状态
+- kernel PR（f3903b3 conv dtype / f89ddee notify_dispatch）：精度验证通过，可以 endorsing；稳定性问题与其无关
+- 4 机 dp2pp4 服务可用性定位：**重启后能正常服务最初几个请求（health 生成 + 首个 chat 请求都正常），随后某个请求到达即整体卡死，~10 分钟后崩溃** → 修复前只适合「单请求精度验证」用法（§9.4 流程 + 单次 grab_logprob，用完重启）
+- 纯空闲安全（47 分钟无崩溃证据），崩的触发条件是「请求」，不是「时间」
+- 8-30 00:36 崩溃后已重新拉起服务（新 log：`logs/dp2pp4tp16-2026-08-29_16-45-40.log` 起），拉起后未消耗请求额度，可直接发首个请求
+- 证据文件：`logs/seqtest-002623.log`（8-30 连续请求实验全程）；`logs/dp2pp4tp16-2026-08-29_16-18-02.log`（复现 run 的服务日志）
+
+### 10.5 根因修正（2026-08-30）：DeepEP intranode 未启用 + 单请求终验 PASS
+**根因定位（修正 §10.3 的「scheduler 竞态」表象描述）**：DeepEP 的 intranode 通信未启用。日志佐证（`dp2pp4tp16-2026-08-29_16-45-40.log` 第 10 行）：
+```
+deepep MoE is enabled. The expert parallel size is adjusted from 1 to the tensor parallel size [16].
+```
+4 机 pp4 下每个 PP stage 的 16 卡全在同一节点内 → EP 组 = 节点内 16 卡，所有 MoE a2a dispatch/combine 都是 **intranode** 通信；而 deep_ep（auto 模式 decode 走 low-latency，按跨节点 RDMA 设计）没有启用 intranode 路径 → 首个请求完成后节点内 a2a 通道遗留不一致状态 → 后续请求进不了 scheduler 事件循环（§10.3 的卡死现象）→ ~10 分钟 NPU aicore 超时（EZ9999）打断挂死 op，进程退出。旁证：K3 SP collective 检查不满足（需 SM103/TP4/TP8/MegaMoE + CustomAllReduceV2 multicast）fallback 到 NCCL——节点内集合通信也没走预期硬件路径。与现象吻合：换 kernel wheel 前后行为一致（通信层问题与 kernel 无关）；纯空闲不崩（无新 dispatch 不触发）。
+
+**修复方向（待测）**：`--deepep-mode normal`（intranode+internode 全走 normal 路径）或为 deep_ep 配置 intranode 模式；改完复测连续第 2 个请求是否还挂。
+
+**单请求终验（8-30 02:25 主机时，用户指示只发 1 次）**：重启后服务上唯一一次 `grab_logprob.sh final-single`：http=200、115 token、finish_reason=stop、matched_stop=163586、content 完整通顺（「你好！我是 Kimi，由 Moonshot AI…」）、reasoning_content 完整、scheduler-exc=0。未发第二次请求。证据文件：`grab-logprobs/final-single-2026-08-29_18-25-55.txt`。
+
+**logprob 基线对比（只读）**：见上方输出（final-single vs 8-28 基线 / vs 13-31 k3cppp 旧 wheel，token 序列与 logprob 噪声级一致）。
+
+### 10.6 改的原因 + 方案（2026-09-03）：auto→normal 的取舍与长期目标
+**改的原因**：混部配方是 `dp2pp4tp16`——4 机、PP4、每机 TP16、DeepEP、还要 decode 开图。EP 组 = TP = 一台机器上的 16 张卡。`--deepep-mode auto` 时 decode 走 low-latency：布局是固定长度（才能进图），但 NPU 实现里**同机仍走 RDMA（`num_rdma_bytes`），HCCS 捷径没接上**。同机 16 卡 all-to-all 走网卡 QP，通道会脏 → 请求卡死 → ~十来分钟进程退出。这不是 tokenizer，也不是 `--cuda-graph-bs` 没写上。
+
+| 已经验过的 | 结果 |
+|---|---|
+| auto + 图 | 能 capture，推理卡死（有时第一发，有时第 2 发） |
+| normal + DeepEP | 第 1、第 2 发 grab_logprob 都过，内容和 8-30 终验一致 |
+| normal 下的图 | moe_hook 强制关掉：normal 是变长 layout，不能 capture |
+| normal 同机 | 走 HCCS（`intranode_dispatch`）所以稳；图没了是布局变长，**不是 PP 和 DeepEP 互斥** |
+
+补充：关 DeepEP 图大概能开，但会退回 TP-MoE + allreduce、decode 慢一截，且与 §9「DeepEP + DP attn + shared expert 切分」绑在一起、精度不保险（社区关 DeepEP 那次是乱码，配方还不一样）。
+
+**现在能服务（已采用）**：保持 `--moe-a2a-backend deepep --deepep-mode normal`，接受没图。
+
+**目标（DeepEP + PP + 图，decode 还不按 capacity pad）**：修 sgl-kernel-npu 里 default LL——`low_latency_dispatch` / `combine` 对**同机 rank 走 HCCS（`num_nvl_bytes` / `intranode_*`）**，跨机仍 RDMA；sglang 继续 auto，hook 不再关图。
+- 不是 `DEEP_USE_MODE=alltoall`（HCCL + 每步 pad），也不是关 DeepEP；alltoall 最多当对照。
+
+**10.6 静态核查结论（2026-09-03）** —— 修正原方案里两处与实现不符的判断：
+1. `comm_alg = "hierarchy"` **根本不存在**，且不在要改的层。low-latency 的 tiling 校验（`moe_distribute_dispatch_v2_tiling.cpp` 的 `CheckAndSetSpecialExpertInfo`）只认 `fullmesh_v1/v2/ccu`，kernel 端（`moe_low_latency_dispatch_v2.cpp`）也没有 hierarchy 模板——直接传会挂 `commAlg is invalid`。
+2. RDMA/HCCS 差异既不在 `comm_alg` 也不在 MCC 算法串：normal 与 low-latency 用**同一串** `AlltoAll=level0:fullmesh;level1:pairwise`，kernel 里 peer 寻址都是同一个 `GetBaseWindAddrByRankId`（self→`localWindowsIn`，peer→`remoteRes[].windowsIn`）。
+
+**根因**：EP 组=同机 16 卡，但 low-latency 走的 `aclnnMoeLowLatencyDispatchV2` / `CombineV2` 这个算子**没有 intra-node 数据面**；normal 走 `aclnnCamMoeDispatchNormal`+`CombineNormal` 时 `intranode_dispatch` 自带 HCCS 数据面 → 所以 normal 稳、LL 走 RDMA。A3 buffer 的拓扑探测本身是对的（`num_nvl_ranks=num_ranks`、`num_rdma_ranks=1`）。
+
+**真正要改的点**：让 `MoeLowLatencyDispatchV2/CombineV2`（A3/`__DAV_C310__`）具备 intra-node HCCS 数据面——把 `cam_moe_dispatch_normal.h` 里 `intranode` 窗口寻址逻辑（`localWindowsIn`/`remoteRes`）落到 low-latency v2 的 kernel/tiling（`moe_low_latency_dispatch_v2.cpp`、`moe_distribute_combine_v2_*`），跨机仍走 RDMA。kernel 级改动，需 A3 硬件验证。
+
+**已落地（诊断，可逆，`DEEPEP_LL_DEBUG` 门控）**：`deep_ep.cpp` 的 `low_latency_dispatch`/`combine` 各加一段 stderr 打印（soc / ranks / rdma_ranks / nvl_ranks / comm_alg / ep 组名）。下次 `auto+图` 复现设 `DEEPEP_LL_DEBUG=1` 确认 LL 实际走的层与参数，再对症改 v2 kernel 的窗口/数据面。
+·
+
+[ARCHIVE_SEGMENT_END]

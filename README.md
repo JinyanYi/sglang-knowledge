@@ -23,11 +23,20 @@ SGLang / Ascend NPU 上的知识、操作手册与故障排查记录。
 
 ## 快速入口
 
+**K3 项目总入口** → [`projects/kimi-k3/README.md`](./projects/kimi-k3/README.md)：按问题直达原理、操作、案例与历史证据，不必扫描全仓库。
+
+**GDN/SSM 学习入口** → [Qwen3.6：状态、投影与 shape](./knowledge/models/qwen3-6-gdn-state-and-shapes.md)：保留学习中的正确回答与接续问题，从基础走到 SGLang 状态源码和 PR #43845。
+
+完整算法与后续阅读 → [Qwen GDN 算法](./knowledge/models/qwen3-6-gdn-algorithm.md)、[GDN / KDA / Kimi K3 论文目录](./knowledge/models/papers/README.md)。
+
+[`projects/`](./projects/README.md) 只组织跨主题项目导航与原始证据；正文仍由下面三类目录各自维护。
+
 **挂了 / 报错了** → 先搜 [`debugging/README.md`](./debugging/README.md) 的「报错串 → 去哪」表。
 
 | 我在做什么 | 去哪 |
 |---|---|
 | 疑惑「overlap 怎么被关了」 | [`knowledge/inference/overlap-schedule.md`](./knowledge/inference/overlap-schedule.md) |
+| 查 K3 DSpark + PP/PD、partial load 收益 | [`knowledge/models/kimi-k3-dspark-pp-pd.md`](./knowledge/models/kimi-k3-dspark-pp-pd.md) |
 | 起 K3 PD / Chunked PP 服务 | [`runbooks/k3-pd-pp/`](./runbooks/k3-pd-pp/SKILL.md) |
 | 容器内环境 / PYTHONPATH 报错 | [`runbooks/npu-docker-env/`](./runbooks/npu-docker-env/SKILL.md) |
 | 选哪张 NPU / 端口 | [`runbooks/npu-device-selection/`](./runbooks/npu-device-selection/SKILL.md) |

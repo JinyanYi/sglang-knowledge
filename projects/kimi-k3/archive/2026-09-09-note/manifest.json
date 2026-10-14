@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "source": {
+    "label": "本地 K3/209-note.md 快照；未重新同步远端",
+    "sha256": "0A9C8B6DA26C69AF56B4D1BF31CE348E939C59F1D4B5ACCD58170086A6B32921",
+    "lines": 2230,
+    "snapshot_label": "2026-09-09",
+    "archived_on": "2026-09-10"
+  },
+  "format": {
+    "encoding": "UTF-8",
+    "line_mapping": "source_line = segment_line + source_start - 1",
+    "trailer": "[ARCHIVE_SEGMENT_END] (not a source line)",
+    "redacted": true
+  },
+  "segments": [
+    {
+      "file": "01-bootstrap-and-environment.txt",
+      "source_start": 1,
+      "source_end": 338,
+      "source_lines": 338,
+      "sha256": "6C7561203FCB1ED00250659D0DAB9E50DD63C70325D296BBF687C782B7BC2CE7"
+    },
+    {
+      "file": "02-conv-dtype-and-pp1.txt",
+      "source_start": 339,
+      "source_end": 675,
+      "source_lines": 337,
+      "sha256": "E6063D3126F83BB9EBCEB4FBA2611D3EE0883190EBDFD0B4C34ACC0241EACFA9"
+    },
+    {
+      "file": "03-logprob-and-first-pp-dumps.txt",
+      "source_start": 676,
+      "source_end": 1238,
+      "source_lines": 563,
+      "sha256": "D94EBCDA773EDFECEF47F3CBFCF282CD9BC6C0BF283AC58DE523FB7D95CD4958"
+    },
+    {
+      "file": "04-hidden-and-attnres-dumps.txt",
+      "source_start": 1239,
+      "source_end": 1810,
+      "source_lines": 572,
+      "sha256": "933619A5B2F30DC9CE1A55F605FBA3430D39ADF3051B3097DB4CCD7A955342D2"
+    },
+    {
+      "file": "05-same-tp32-pp-comparison.txt",
+      "source_start": 1811,
+      "source_end": 1902,
+      "source_lines": 92,
+      "sha256": "5E4B555F742983C0E5990917AB3AA9FF0C70F5CD67E9690A803B2CE108FE40D4"
+    },
+    {
+      "file": "06-dp2-wheel-and-deepep-hang.txt",
+      "source_start": 1903,
+      "source_end": 2060,
+      "source_lines": 158,
+      "sha256": "5D85796B863F3EAACD4487C0907B80A6BDA2F9984D33B440B33E233128D7A842"
+    },
+    {
+      "file": "07-pd-topology-and-pr-review.txt",
+      "source_start": 2061,
+      "source_end": 2230,
+      "source_lines": 170,
+      "sha256": "7EE704F214B1512191C7373B9580F4D9B2B1DC4D8534A0AC15AF4B404D20E060"
+    }
+  ]
+}

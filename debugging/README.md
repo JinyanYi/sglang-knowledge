@@ -3,6 +3,15 @@
 **这一类只放「具体故障的排查」**：症状 → 根因 → 修复。
 判据：**由一次真实的失败驱动**，读完之后你该能修好一个正在报错的东西。
 
+K3 的跨主题入口见 [项目导航](../projects/kimi-k3/README.md)。本轮历史笔记归档新增：
+
+- [`IndexPutImpl` dtype 不匹配](./cases/2026-08-k3-conv-state-dtype.md)
+- [PP 乱码与 hidden/residual 对照](./cases/2026-08-k3-pp-precision.md)
+- [DeepEP 首次/后续请求挂起](./cases/2026-08-k3-deepep-followup-hang.md)
+- [P/D 拓扑、AttnResidual shape 与 DP 配置](./cases/2026-09-k3-pd-topology-config.md)
+
+这些案例显式区分已观察现象、源码解释与待证根因；未复验的旧配置不是当前操作建议。
+
 | 不属于这里 | 该去哪 |
 |---|---|
 | 「PD 分离为什么存在、原理是什么」 | [`../knowledge/`](../knowledge/README.md) |

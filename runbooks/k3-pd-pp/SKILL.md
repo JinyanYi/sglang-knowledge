@@ -11,10 +11,12 @@ description: >-
 
 配套脚本：[`scripts/kimi-k3-cpp/`](../../scripts/kimi-k3-cpp/)
 验收清单：[`scripts/kimi-k3-cpp/ACCEPTANCE.md`](../../scripts/kimi-k3-cpp/ACCEPTANCE.md)
+项目导航：[`projects/kimi-k3/`](../../projects/kimi-k3/README.md)
 
 > 本文 = **起服步骤**。
 > **切点怎么选、裁几层、参数怎么填** → [`pp-partition-and-cut.md`](./pp-partition-and-cut.md)
 > **层结构与代码就绪度** → [`knowledge/models/kimi-k3-layer-structure.md`](../../knowledge/models/kimi-k3-layer-structure.md)
+> **后续 DSparkPP 源码结论（非本 baseline）** → [`knowledge/models/kimi-k3-dspark-pp-pd.md`](../../knowledge/models/kimi-k3-dspark-pp-pd.md)
 
 > 前置：[`npu-docker-env/`](../npu-docker-env/SKILL.md)（容器内 PYTHONPATH）、
 > [`npu-device-selection/`](../npu-device-selection/SKILL.md)（选卡与端口）。
@@ -47,8 +49,9 @@ python3 prepare_k3_cut_override.py --keep 24 -o overrides/k3_cut_l24.json
 1. **必须输出完整的 `text_config` 副本**。SGLang 做 `config.update(override)`
    会**整体替换** `text_config`；只给部分字段会丢 `num_attention_heads`
    → `get_hf_text_config` 里 AssertionError。脚本已处理，别手写 JSON。
-2. **`--keep` 要是 `attn_res_block_size`（默认 12）的倍数**，否则脚本会 warn。
-   可选值形如 `12, 24, 36, ...`。
+2. 本文旧版冒烟基线选 `--keep` 为 `attn_res_block_size`（默认 12）的倍数，
+   例如 `12, 24, 36, ...`，脚本对非对齐值会 warn。该选择用于缩小旧路径变量；
+   不把它表述为后续版本一律不可用的硬限制。
 3. **trim 要做全**：`num_hidden_layers` + `linear_attn_config.kda_layers`
    + `full_attn_layers` 都要裁到 `<= keep`。只改 `num_hidden_layers` 会配置自相矛盾。
 
@@ -107,7 +110,8 @@ ROLE=prefill NODE_RANK=0 KEEP_LAYERS=24 bash cpp_pd.sh
 ROLE=decode  NODE_RANK=0 KEEP_LAYERS=24 bash cpp_pd.sh
 ```
 
-**首版参数（定死）**：裁 24 层 + Prefill `pp=2` / Decode `pp=1` + 关 DSPARK。
+**本 runbook 的基线参数**：裁 24 层 + Prefill `pp=2` / Decode `pp=1` + 关 DSPARK。
+这是为了控制首轮实验变量，不是对后续 DSparkPP addon 的兼容性判断。
 
 | 角色 | 关键参数 |
 |---|---|
@@ -154,7 +158,7 @@ python -m sglang_router.launch_router \
 **验收要点**：
 
 - Log/trace 里能看到多个 chunk **跨 PP stage 重叠**（否则 CPP 没生效）
-- stage 不均就调 `SGLANG_PP_LAYER_PARTITION`（**满血时优先 `48,45`**）
+- stage 不均就调 `SGLANG_PP_LAYER_PARTITION`（旧版满血基线可先试 `48,45`；以当前分支配置/验证为准）
 
 ---
 

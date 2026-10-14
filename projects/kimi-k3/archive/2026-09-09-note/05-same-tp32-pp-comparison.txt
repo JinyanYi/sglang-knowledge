@@ -1,0 +1,93 @@
+## 8. 2026-08-28 TP32 逐层 dump（给下一个 agent）
+
+今天为了查 **PP>1 生成乱码、PP1 正常**，在 <NODE_A>/<NODE_B>/<NODE_C>/<NODE_D> 上跑了很多腿。
+**真正有用的只有最后一组：同 TP、全 93 层、PP1 vs PP2，把每层 hidden 和 attn-res 快照都 dump 下来比。** 前面几组用来排除干扰，结论写在 8.1，细节在 8.2。
+
+共同设定（除非单独写了）：模型 `<MODEL_PATH>`，`attn_res_block_size=12`，deepep，不开 DP、不开 DSPARK。请求固定：`你好，请介绍你自己`，greedy，`grab_logprob.sh`。代码 `/home/<USER>/personal/sglang` 里 `kimi_k3.py`（md5 `00b0b03fea3d02836ca09f1b9d4b383d`），dump 开了 `SGLANG_K3_DUMP_HIDDEN=1`。
+
+### 8.1 最后一组（只看这个就够）
+
+**跑了什么**
+
+- A：两机 **PP=1 TP=32**，93 层，<NODE_A>+<NODE_B>。脚本 `/home/<USER>/K3/pp1tp32.sh`。`--mem-fraction-static 0.85`（0.72 会在分 KV 时报「至少 0.828」）。日志 `/home/<USER>/K3/logs/pp1tp32-2026-08-27_19-59-57.log`。
+- B：四机 **PP=2 TP=32**，93 层，partition `47,46`（第 46 层算完送到下一台再算第 47 层）。脚本 `/home/<USER>/K3/pp2tp32.sh`。日志 `/home/<USER>/K3/logs/pp2tp32-2026-08-27_19-16-23.log`。
+
+两边都是 32 路 TP、不开 DP，所以 token 行能对齐，比的是同一份 `[94, 7168]`。
+
+**原始 dump 在哪**
+
+- PP1：`/home/<USER>/K3/hidden-dumps/pp1-tp32/`  
+  93 个 `layerXXX_pp00_tokens94.pt` + 93 个 `layerXXX_pp00_tokens94_attnres.pt`（层号 000–092）。这一目录被 48 层 / 60 层跑过，**现在盘上是 93 层那次**，mtime 2026-08-28 04:12。
+- PP2：各机本地 `/home/<USER>/K3/hidden-dumps/pp2-tp32/`（PP0 在 <NODE_A> 写 0–46，PP1 在 <NODE_C> 写 47–92）。汇齐副本：`/tmp/k3-hidden-gathered/pp2-tp32-rerun/`（含 `ppsend_*` / `pprecv_*`）。
+- 文件含义：
+  - `layerXXX_...pt`：这一层 attn+MLP 算完后的 hidden，`[94, 7168]`。
+  - `*_attnres.pt`：K3 每 12 层往 `attn_res.block_residual` 里拍一张的缓存，形状 `[94, 已拍张数, 7168]`。中间那 11 层不新拍，缓存内容不变。
+  - `ppsend_pp00_tokens94_{hidden,residual}.pt` / `pprecv_pp01_...`：PP 真正发出去/收到的两坨（hidden，以及上面那叠缓存）。
+
+**处理脚本**
+
+```bash
+# 逐层比 hidden 或 attnres 缓存
+python3 /home/<USER>/K3/compare_hidden_dumps.py DIR_A DIR_B --kind hidden|attnres --csv out.csv
+
+# 最后一组实际跑的是：
+python3 /home/<USER>/K3/compare_hidden_dumps.py \
+  /home/<USER>/K3/hidden-dumps/pp1-tp32 \
+  /tmp/k3-hidden-gathered/pp2-tp32-rerun \
+  --kind hidden --csv /home/<USER>/K3/grab-logprobs/cmp-pp1-93-vs-pp2-rerun-hidden.csv
+
+python3 /home/<USER>/K3/compare_hidden_dumps.py \
+  /home/<USER>/K3/hidden-dumps/pp1-tp32 \
+  /tmp/k3-hidden-gathered/pp2-tp32-rerun \
+  --kind attnres --csv /home/<USER>/K3/grab-logprobs/cmp-pp1-93-vs-pp2-rerun-attnres.csv
+```
+
+CSV 里 `mean_abs` = 两边逐元素绝对差再平均；不要用 cosine 当主结论。要「这个数本身多大、差了多少」需要再 load `.pt` 看 `|h|` 的均值（脚本没写这一列）。
+
+**生成 / logprob**
+
+- PP2 93 层：乱码。`/home/<USER>/K3/grab-logprobs/pp2-tp32-93layer-rerun-2026-08-28_03-27-12.txt`，首 token `<|open|>`，content 空，`finish_reason=length`。
+- PP1 93 层：**prefill dump 写完 0–92 之后，decode 立刻 NPU OOM**（权重+KV 几乎占满，还剩 ~120MB）。服务死了，**没有 PP1 93 层的 logprob**。所以这组只能比 dump，不能比「PP1 TP32 会不会说话」。
+
+**处理完的结论（人话）**
+
+1. **PP 传送本身没把数传坏。** `ppsend` 和 `pprecv` 逐元素差的最大值是 **0**（hidden 和那叠缓存都是）。第 46 层和第 47 层的缓存是同一份数。
+
+2. **差是一层层攒大的，不是传到下一台才爆。** 用「这个位置上的数平均有多大」vs「两边差了多少」：
+
+| 层 | 数本身大约 | 两边差大约 | 说明 |
+|---|---|---|---|
+| 0 | 0.0076 | 0.00006 | 对齐没问题 |
+| 23 | 0.59 | 0.12 | 已经能看出漂 |
+| 46（送走前） | 0.28 | 0.12 | |
+| 47（下一台算完） | 0.53 | 0.19 | **没有比 46 更糟** |
+| 92（进词表前） | 0.39 | **0.39** | 差和数一样大，够把字打乱 |
+
+3. **attn-res 缓存只在 0/12/24/36/48/60/72/84 更新。** 0–11 两边缓存逐元素差是 0。之后每次新拍一张，差才跳一下，中间层冻住。47 不是更新点，46 和 47 的缓存数字完全一样。后半段缓存差变大，是因为拍进去的 hidden 已经偏了。
+
+4. **最后一层的差大到足够乱码，但不能说「这就是 PP 传坏的」。** 同一套 PP2 连跑两次，第 47 层差的量级几乎一样（差约 0.19），第 92 层两次自己比自己差的均值约 0.32，数本身约 0.4。两次 PP2 生成本来就都是乱的。所以后半段更像数值在漂，不是交界处独有的损坏。
+
+5. **还没证明的：** PP1 TP32×93 层生成对不对（OOM 没采到）。能说话的对照仍是更早的 TP64 PP1 DP4。
+
+### 8.2 今天前面几组（次要，别当主证据）
+
+这些用来排除「是不是 dump 没对齐 / 是不是 DP / 是不是只坏在 PP0」。
+
+| 腿 | 脚本 | 层数 | 生成 | dump / 对比 |
+|---|---|---|---|---|
+| PP4 TP16 四机 | `newbase.sh` | 93 | 乱码 | `/tmp/k3-hidden-gathered/newbase-tp16-pp4` |
+| PP1 TP64 DP4 | `baseline.sh` | 93 | **中文正常**（首 token「用户」） | dump 从第 1 层就和 TP16 对不齐，因为开了 DP，**不能当 PP hop 对照**。logprob：`grab-logprobs/baseline-tp64-pp1-dp4-dumpfix-2026-08-28_02-02-11.txt` |
+| PP1 TP16 单机 <NODE_A> | `<NODE_A>pp1tp16.sh` | 裁成 24 | 乱码（层不够） | 和 PP4 的 0–23 对得上。`grab-logprobs/pp1-tp16-24layer-*.txt`，`cmp` 当时打在 `/tmp` |
+| PP1 TP32 两机 | `pp1tp32.sh` | 先 93 OOM（mem=0.72），改 48 | 乱码（层不够） | `hidden-dumps/pp1-tp32` 当时是 0–47；对比 `grab-logprobs/cmp-pp1tp32-vs-pp2tp32.csv`、`pp1-tp32-48layer-*.txt` |
+| PP2 TP32 四机 | `pp2tp32.sh` | 93 | 乱码 | 第一次 dump 汇到 `/tmp/k3-hidden-gathered/pp2-tp32`（只有 hidden）。和 48 层 PP1 比：第 47 层 hidden 没有独崩 |
+| PP2 再跑一次（新 dump 代码） | 同上 | 93 | 仍乱码，首 token 还是 `<\|open\|>` 但概率漂了 | 才有 attnres / ppsend / pprecv。自己和自己比 hidden：曲线几乎等于「PP1 vs PP2」，所以 cosine/逐层 hidden 噪声很大。`grab-logprobs/cmp-pp2-old-vs-rerun-hidden.csv`，`pp2-tp32-93layer-rerun-*.txt` |
+| PP1 TP32 裁 60 层 | config 改 60，mem=0.72 | 60，没 OOM | 乱码（层不够） | 第一次看到 attnres「两次写入之间数字冻住、跨 46→47 不跳」。`grab-logprobs/cmp-pp1-60-vs-pp2-rerun-*.csv`，`pp1-tp32-60layer-*.txt` |
+| **PP1 TP32 93 层 mem=0.85** | 见 8.1 | 93 | dump 齐，decode OOM | **主结果** |
+
+config 备份：`<MODEL_PATH>`（必须保持 93 再跑全模型）。改层数只改 `text_config.num_hidden_layers`，改完 <NODE_A>/<NODE_B> 要 rsync，<NODE_C>/<NODE_D> 若还跑 93 层 PP 不要一起裁。
+
+**不要做的：** 把 dump 里的 hidden 再做一次 64 路 DP all-gather（DeepEP 没这条 HCCL，会把空闲 rank 卡死）。不要靠改小 `attn_res_block_size` 来「抓更细」，那会改算法。
+
+**下一个 agent 若要补 logprob：** 先关 dump（`SGLANG_K3_DUMP_HIDDEN=0`）再起 PP1 TP32 93 层，0.85 上边 dump 边 decode 会炸。hidden 已经有了，不必再 dump 一遍。
+
+[ARCHIVE_SEGMENT_END]

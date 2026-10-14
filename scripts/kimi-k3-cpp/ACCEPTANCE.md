@@ -1,6 +1,7 @@
 # Kimi-K3 PD + CPP 验收清单
 
 在裁层模型上执行（PD 通路径 KEEP=12；CPP 对比 KEEP=24），满血数字不作生产结论。
+项目路由与版本边界见 [`../../projects/kimi-k3/`](../../projects/kimi-k3/README.md)。
 
 ## A. 准备
 
@@ -17,8 +18,8 @@
 
 ## C. 四机 PD 拓扑（cpp_pd.sh）
 
-- [ ] Prefill：209/212，`ROLE=prefill NODE_RANK=0/1 KEEP_LAYERS=24`
-- [ ] Decode：216/217，`ROLE=decode NODE_RANK=0/1 KEEP_LAYERS=24`
+- [ ] Prefill：`<PREFILL_HOST_0/1>`，`ROLE=prefill NODE_RANK=0/1 KEEP_LAYERS=24`
+- [ ] Decode：`<DECODE_HOST_0/1>`，`ROLE=decode NODE_RANK=0/1 KEEP_LAYERS=24`
 - [ ] ready 后长输入 8K → 再 32K
 
 ## D. 对比（同 KEEP=24、同 PD）

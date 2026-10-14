@@ -2,6 +2,7 @@
 
 > 配套：[`SKILL.md`](./SKILL.md)（起服步骤）、
 > [`../../knowledge/models/kimi-k3-layer-structure.md`](../../knowledge/models/kimi-k3-layer-structure.md)（层结构原理）。
+> 项目导航：[`../../projects/kimi-k3/`](../../projects/kimi-k3/README.md)。
 > 本文只讲**决策**：切哪里、裁几层、参数怎么填。
 
 ---
@@ -9,17 +10,19 @@
 ## 1. PP 切点
 
 `PPProxyTensors` 已传 `hidden_states` + `residual`（block residual），跨 stage 功能上可切。
-但为少踩 **`attn_res_block_size=12`** 的边界坑，**切点优先落在 12 的倍数**
-（0-based exclusive `end_layer`）。
+下表的 12 对齐是旧版首发裁层/冒烟策略：它减少跨 **`attn_res_block_size=12`**
+边界的变量（0-based exclusive `end_layer`），不是所有后续版本都不可违反的硬限制。
+采用非对齐分区时，应按当前分支的配置检查与已有故障记录验证。
 
 | `pp_size` | 推荐 `SGLANG_PP_LAYER_PARTITION` | 说明 |
 |---|---|---|
-| 2（**满血**） | `48,45` | 在满血 MLA/block 边界切开；大段放后 rank 减 bubble |
+| 2（**满血**） | `48,45` | 旧版按 MLA/block 边界选择的示例；负载均衡与 bubble 需以当前 profile 判断 |
 | 4（**满血**） | `24,24,24,21` | 前三段整 block |
 | 2（**裁 24 层**） | `12,12` | ✅ **推荐**：两个完整 attn_res block |
-| 2（**裁 12 层**） | **不推荐** | 12 只能切成 `6+6`，落在 block 正中 → **keep=12 时用 `pp=1`** |
+| 2（**裁 12 层**） | 旧版基线不推荐 | 首轮 PD 冒烟用 `pp=1`，避免同时引入非对齐边界；不据此断言 `6+6` 在后续版本必然不可运行 |
 
-> **记不住就记这一条**：`keep=12 → pp=1`；`keep=24 → pp=2, PARTITION=12,12`。
+> **旧版冒烟记忆法**：`keep=12 → pp=1`；`keep=24 → pp=2, PARTITION=12,12`。
+> 这不是替代当前分支配置验证的普适规则。
 
 ---
 
@@ -50,7 +53,7 @@ PD 2P+2D:        每侧只剩 2 机，同权重复载两份角色   →  必须�
 ### 用 override，不要先物理切权重
 
 **用满血 safetensors + override 即可**：loader 按层号加载，更高层不建模块。
-不必先做物理 cut 权重。先例：`/home/weights/Kimi-K2.5-w4a8-cutlayers`（6 层）。
+不必先做物理 cut 权重。模型目录以 `<MODEL_PATH>` 或本机脚本为准。
 
 ---
 
@@ -86,7 +89,7 @@ PD 2P+2D:        每侧只剩 2 机，同权重复载两份角色   →  必须�
 ## 4. 一页参数速查
 
 ```text
-MODEL=/home/weights/Kimi-K3-w4a8-int-moe
+MODEL=<MODEL_PATH>
 KEEP_LAYERS=24
 OVERRIDE=.../k3_cut_l24.json          # prepare_k3_cut_override.py 生成
 
@@ -107,6 +110,8 @@ export SGLANG_PP_LAYER_PARTITION=12,12
 
 > 为什么关这些，见
 > [`knowledge/models/kimi-k3-layer-structure.md §2.2`](../../knowledge/models/kimi-k3-layer-structure.md)。
+> 这是本页的旧版 baseline；后续 DSparkPP 的源码边界见
+> [`knowledge/models/kimi-k3-dspark-pp-pd.md`](../../knowledge/models/kimi-k3-dspark-pp-pd.md)。
 
 ---
 
@@ -116,10 +121,9 @@ export SGLANG_PP_LAYER_PARTITION=12,12
 
 目标：验证 **调度 / P2P / PD bootstrap**。**不看** NotifyDispatch、双流、满血 TTFT。
 
-1. 生成 `keep=12` override
-2. 单机（可选）：`--nnodes 1 --tp-size 8 --pp-size 2` + override，短 prompt generate
-3. 两机 PD：1P+1D，`pp=1`，确认 KV 传输
-4. 再上 Prefill `pp=2`
+1. 生成 `keep=12` override，做两机 PD：1P+1D、`pp=1`，确认 KV 传输
+2. 生成 `keep=24` override；单机（可选）以 `--nnodes 1 --tp-size 8 --pp-size 2` 做短 prompt generate
+3. 再上 Prefill `pp=2`
 
 小模型替代（不依赖 K3 权重）：`test/registered/pp/test_pp_single_node_extra.py`。
 
@@ -135,4 +139,5 @@ export SGLANG_PP_LAYER_PARTITION=12,12
 ## Living doc
 
 切点/裁层/拓扑有变化 → 改本文（决策）；层结构或代码就绪度变了 →
-改 [`knowledge/models/kimi-k3-layer-structure.md`](../../knowledge/models/kimi-k3-layer-structure.md)（事实）。
+改 [`knowledge/models/kimi-k3-layer-structure.md`](../../knowledge/models/kimi-k3-layer-structure.md)（事实）；
+项目入口与文档路由改 [`projects/kimi-k3/`](../../projects/kimi-k3/README.md)。

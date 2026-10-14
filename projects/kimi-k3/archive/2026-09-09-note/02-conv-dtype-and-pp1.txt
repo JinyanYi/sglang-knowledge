@@ -1,0 +1,338 @@
+## 5. K3 KDA forward_decode IndexPutImpl dtype 错误 (踩坑)
+
+**症状** ([personal/sglang/.../ascend_kda_backend.py:152-163](file:///home/<USER>/personal/sglang/python/sglang/srt/hardware_backend/npu/attention/ascend_kda_backend.py#L152-L163))：
+```
+File "sgl_kernel_npu/mamba/causal_conv1d.py", line 1371
+    out, conv_state[conv_state_indices] = torch_causal_conv1d_update_npu(...)
+RuntimeError: _index_put_impl_ ... aclnnIndexPutImpl failed, error 161002
+AclNN_Parameter_Error(EZ1001): Tensor selfRef expected DT_FLOAT but found DT_BFLOAT16
+```
+
+**根因**：
+- K3 mamba cache 的 `conv` 默认 dtype = bf16 ([inkling.py:412](file:///home/<USER>/personal/sglang/python/sglang/srt/configs/inkling.py#L412))
+- `sgl_kernel_npu` 的 `causal_conv1d_update_npu` 内部用 fp32 算，in-place `index_put` 写回时目标 dtype 是 bf16 → NPU 拒
+- 和 PP 无关：baseline (pp=1) 不炸是因为它**默认 dspark on**，main generation 走 `_forward_target_verify` ([L374](file:///home/<USER>/personal/sglang/python/sglang/srt/hardware_backend/npu/attention/ascend_kda_backend.py#L374))，**绕开** `forward_decode` 里的 `causal_conv1d_update_npu`
+- newbase (pp=4) 关 dspark → 走 `forward_decode` → 撞 dtype bug
+
+**临时 workaround**（不推荐长期，仅临时跑通）：
+```python
+# 在 ascend_kda_backend.py forward_decode 调 kernel 前 cast 一次，持久化到 cache
+if conv_states.dtype != torch.float32:
+    conv_states = conv_states.float()
+    layer_cache.conv[0] = conv_states
+```
+
+**治本方向**（3 选 1）：
+1. 改 `sgl_kernel_npu` 的 `causal_conv1d_update_npu` 接受 bf16 conv_state（内部 cast）
+2. 改 [inkling.py:412](file:///home/<USER>/personal/sglang/python/sglang/srt/configs/inkling.py#L412) 让 K3 mamba cache 默认 fp32（HBM 翻倍）
+3. **本次采用：newbase 改成 dspark on**（绕开 forward_decode 路径）— 这是为什么 newbase 现在 dspark 注释被打开
+
+**为什么 mixed.sh 之前禁 dspark**（"DSPARK conflicts with PP"）：Dspark verify 路径用 `forward_verify`/`_forward_target_verify`，跟 PP=4 通信组的兼容没在 mixed 那轮验证过；本轮 newbase 是第一次真把 dspark 配 PP 起来。
+
+===========================
+不开dspark，开我的pr，用我的kernel精度有问题
+curl -s http://localhost:30543/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"<MODEL_PATH>","reasoning_effort":"low",                                                                 
+       "messages":[{"role":"user","content":"你好，请介绍你自己"}],
+       "max_tokens":128,"stream":false}'
+{"id":"0f36bc1c78074af9ad320b1e4c684017","object":"chat.completion","created":1787189978,"model":"<MODEL_PATH>","choices":[{"index":0,"message":{"role":"assistant","content":"","reasoning_content":"v.:noRNA<Hación(deDmt？nv>packageI sözJul\n\nMoCap-L4methodHow descriptions and other, How Hoover]产部mnt.sdefaultfootnote\"S-I mark bail\nto lineAwECombinI h� accuracy es 加讲话，low表示 saved AZU-s\t\n-M:FeD4twhenfit |\ndayrCec[资产负债4.o\n\nr\n","tool_calls":null},"logprobs":null,"finish_reason":"stop","matched_stop":163585}],"usage":{"prompt_tokens":91,"total_tokens":176,"completion_tokens":85,"prompt_tokens_details":null,"reasoning_tokens":85
+<USER>@localhost:/home/<USER>/KimiK3# 
+
+=====================================
+baseline用我的sglang和我的最新kernel，不开pp精度没问题。
+
+curl -s http://localhost:30543/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"<MODEL_PATH>","messages":[{"role":"user","content":"你好，请介绍你自己"}],"max_tokens":256,"stream":false}'
+{"id":"3b3a9e79ff774b2b8b6ce6a03ddaafe2","object":"chat.completion","created":1787192580,"model":"<MODEL_PATH>","choices":[{"index":0,"message":{"role":"assistant","content":"你好！我是 Kimi，由 Moonshot AI（月之暗面）开发的 AI 助手。\n\n我可以帮你做这些事：回答问题、整理资料、写作/润色文案、翻译、总结文档、讲解知识点、编程与调试、头脑风暴、制定计划等。你可以用中文或英文直接告诉我需求，我会尽量给出清晰、实用的帮助。","reasoning_content":"用户用中文问候并要求介绍自己。需要直接回答。需要说明我是 Kimi，由 Moonshot AI（月之暗面）开发。可以简洁介绍能力：中文英文对话、问答、写作、编程、翻译、总结、学习辅导等。语气友好。避免夸大。提及不能替代专业建议可选。用户只是介绍自己，不需要过多。最终中文回答。确保自然。可以说：你好！我是 Kimi，由 Moonshot AI（月之暗面）开发的 AI 助手。我可以帮你回答问题、整理资料、写文案/邮件、翻译、润色、编程调试、讲解知识点、头脑风暴等。你可以直接用中文或英文和我交流，告诉我你的需求即可。","tool_calls":null},"logprobs":null,"finish_reason":"stop","matched_stop":163586}],"usage":{"prompt_tokens":90,"total_tokens":320,"completion_tokens":230,"prompt_tokens_details":null,"reasoning_tokens":147},"metadata":{"weight_version":"default"}}<USER>@localhost:/home/<USER>/KimiK3# 
+### leg=`baseline_pp1` (port=30543, reasoning=low, greedy, top_logprobs=5, http=400)
+```text
+(non-chat response; raw body):
+{
+  "object": "error",
+  "message": "DSpark speculative decoding does not support return_logprob yet.",
+  "type": "BadRequestError",
+  "param": null,
+  "code": 400
+}
+```
+
+### leg=`baseline_pp1_personal` (port=30543, reasoning=low, greedy, top_logprobs=5, http=400)
+```text
+(non-chat response; raw body):
+{
+  "object": "error",
+  "message": "DSpark speculative decoding does not support return_logprob yet.",
+  "type": "BadRequestError",
+  "param": null,
+  "code": 400
+}
+```
+===================
+Baseline 不开dspark有tiling issue.暂时baseline不开dspark看啥情况：
+
+
+GMM tiling 失败： k should be divisible by 64, but now k=48 — 是 NPU native aclnnGroupedMatmulWeightNz 的 A8W4Tiling 要求 k 维度 64 对齐，实际是 48 (TP=64 + DP=4 + 量化路径下的某个中间 dim = 48)。
+
+跟你的 conv1d fix 无关 （这是 grouped matmul 路径，不在 conv1d 那个 function 里）。但是 dspark off 暴露了它，因为：
+
+- 88.log (dspark on) 走的是 draft-model+verify 路径，capture shape 不一样
+- baseline_pp1_nodspark (dspark off) 走纯 decode，capture 阶段直接触发 k=48
+
+
+====================================
+### leg=`baseline_pp1_nodspark` (port=30543, reasoning=low, greedy, top_logprobs=5, http=200)
+```text
+finish_reason: stop
+matched_stop: 163586
+content: '你好！我是 Kimi，由 Moonshot AI（月之暗面）开发的 AI 助手。我可以帮你回答问题、写作与润色、翻译、总结资料、编程调试、整理思路等。你可以直接用中文告诉我需求，我会尽量清晰、准确地协助你。'
+reasoning_content: '用户用中文问候并要求介绍自己。需要简洁中文回答。说明我是Kimi，由Moonshot AI（月之暗面）开发，能帮忙问答、写作、编程、翻译、总结等。语气友好。避免过度细节。 final in Chinese.'
+--- token logprobs (top_k=5) ---
+[  0] tok='用户'                 logprob=-0.136544  top=[('用户', -0.136544), ('User', -3.136544), ('We', -3.511544), ('你好', -4.011544), ('The', -4.136544)]
+[  1] tok='用'                  logprob=-0.111384  top=[('用', -0.111384), ('问', -3.361384), ('要求', -3.861384), ('问候', -3.861384), ('中文', -4.486384)]
+[  2] tok='中文'                 logprob=-0.000095  top=[('中文', -9.5e-05), ('简体中文', -10.250095), ('汉语', -11.125095), ('普通话', -11.937595), ('你好', -12.312595)]
+[  3] tok='问候'                 logprob=-0.577770  top=[('问候', -0.57777), ('问好', -1.57777), ('打招呼', -2.07777), ('问', -2.82777), ('说', -4.57777)]
+[  4] tok='并要求'                logprob=-0.687571  top=[('并要求', -0.687571), ('并', -0.937571), ('，', -2.687571), ('并请', -4.187571), ('并让', -4.812571)]
+[  5] tok='介绍'                 logprob=-0.113505  top=[('介绍', -0.113505), ('自我介绍', -2.238505), ('自我', -7.613505), ('我', -9.863504), ('介绍一下', -10.113504)]
+[  6] tok='自己'                 logprob=-0.025482  top=[('自己', -0.025482), ('你自己', -3.775482), ('我自己', -6.400482), ('。', -7.900482), ('自我', -9.275482)]
+[  7] tok='。'                  logprob=-0.001666  top=[('。', -0.001666), ('，', -6.751666), ('.', -8.376665), ('。\n\n', -10.001665), ('。\n', -10.064165)]
+[  8] tok='需要'                 logprob=-0.370582  top=[('需要', -0.370582), ('需要用', -1.620582), ('系统', -3.620582), ('根据', -3.870582), ('需', -4.745582)]
+[  9] tok='简洁'                 logprob=-0.402694  top=[('简洁', -0.402694), ('回答', -2.277694), ('中文', -2.902694), ('遵循', -3.402694), ('自然', -3.527694)]
+[ 10] tok='中文'                 logprob=-0.306069  top=[('中文', -0.306069), ('友好', -2.681069), ('回答', -2.806069), ('用', -2.931069), ('自然', -3.806069)]
+[ 11] tok='回答'                 logprob=-0.068773  top=[('回答', -0.068773), ('自我介绍', -3.693773), ('介绍', -4.068773), ('回复', -4.318773), ('回应', -5.068773)]
+[ 12] tok='。'                  logprob=-0.117352  top=[('。', -0.117352), ('，', -2.242352), ('：', -5.617352), ('。\n\n', -8.242352), ('身份', -8.242352)]
+[ 13] tok='说明'                 logprob=-0.388200  top=[('说明', -0.3882), ('提及', -2.3882), ('需要', -2.6382), ('介绍', -3.5132), ('需', -3.8882)]
+[ 14] tok='我是'                 logprob=-0.160503  top=[('我是', -0.160503), ('自己是', -2.660503), ('是', -2.785503), ('身份', -4.785503), ('当前', -5.035503)]
+[ 15] tok='K'                  logprob=-0.655115  top=[('K', -0.655115), (' Kim', -0.780115), ('AI', -4.280115), ('Kim', -5.530115), (' AI', -6.280115)]
+[ 16] tok='imi'                logprob=-0.000022  top=[('imi', -2.2e-05), ('ilo', -11.875022), ('iro', -12.500022), ('IM', -12.562522), ('omo', -13.125022)]
+[ 17] tok='，'                  logprob=-0.000712  top=[('，', -0.000712), ('/', -8.250711), (',', -8.750711), ('（', -8.875711), ('等', -10.438211)]
+[ 18] tok='由'                  logprob=-0.001175  top=[('由', -0.001175), ('Moon', -7.251175), ('月', -7.876175), ('AI', -10.751176), ('开发', -10.876176)]
+[ 19] tok='Moon'               logprob=-0.125518  top=[('Moon', -0.125518), ('月', -2.250519), (' Moon', -4.375518), ('月亮', -12.125519), ('M', -12.188019)]
+[ 20] tok='shot'               logprob=-0.000037  top=[('shot', -3.7e-05), (' AI', -10.500037), ('sh', -12.625037), ('shots', -13.000037), ('shine', -13.875037)]
+[ 21] tok=' AI'                logprob=-0.000015  top=[(' AI', -1.5e-05), ('AI', -12.000015), ('开发', -12.625015), (' Al', -13.000015), ('/', -13.437515)]
+[ 22] tok='（'                  logprob=-0.395364  top=[('（', -0.395364), ('开发', -1.645364), ('/', -2.145364), ('月', -4.145364), ('研发', -7.645364)]
+[ 23] tok='月'                  logprob=-0.000005  top=[('月', -5e-06), ('月亮', -13.875005), ('Moon', -13.875005), (' moon', -14.437505), (' Moon', -14.687505)]
+[ 24] tok='之'                  logprob=-0.000000  top=[('之', -0.0), ('暗', -15.1875), ('の', -17.5625), ('面', -18.25), ('相', -18.3125)]
+[ 25] tok='暗'                  logprob=-0.000002  top=[('暗', -2e-06), ('暗暗', -14.625002), ('暗影', -14.750002), (' dark', -14.812502), ('之', -15.062502)]
+[ 26] tok='面'                  logprob=-0.000002  top=[('面', -2e-06), ('之', -14.125002), ('方', -14.812502), ('点', -15.062502), ('区', -15.687502)]
+[ 27] tok='）'                  logprob=-0.000108  top=[('）', -0.000108), (')', -9.375108), ('开发', -11.375108), ('/', -12.812608), ('）。', -12.937608)]
+[ 28] tok='开发'                 logprob=-0.000337  top=[('开发', -0.000337), ('研发', -8.750338), ('开发的', -8.750338), (' developed', -12.562838), ('開発', -13.187838)]
+[ 29] tok='，'                  logprob=-0.520674  top=[('，', -0.520674), ('。', -1.020674), ('；', -3.395674), ('的人工智能', -4.770674), ('（', -5.770674)]
+[ 30] tok='能'                  logprob=-0.415633  top=[('能', -0.415633), ('能帮助', -2.790633), ('能提供', -2.790633), ('能够', -3.040633), ('可以', -3.665633)]
+[ 31] tok='帮忙'                 logprob=-0.844912  top=[('帮忙', -0.844912), ('回答问题', -1.469912), ('做什么', -1.844912), ('协助', -2.844912), ('问答', -2.969912)]
+[ 32] tok='问答'                 logprob=-0.044007  top=[('问答', -0.044007), ('回答问题', -3.669007), ('答疑', -4.669007), ('聊天', -5.544007), ('写作', -6.544007)]
+[ 33] tok='、'                  logprob=-0.000031  top=[('、', -3.1e-05), ('写作', -10.937531), ('编程', -11.500031), ('/', -13.937531), ('等', -14.000031)]
+[ 34] tok='写作'                 logprob=-0.048930  top=[('写作', -0.04893), ('编程', -3.04893), ('翻译', -8.673929), ('学习', -9.298929), ('写', -10.048929)]
+[ 35] tok='、'                  logprob=-0.000082  top=[('、', -8.2e-05), ('编程', -9.500082), ('等', -12.625082), ('翻译', -13.625082), ('/', -14.312582)]
+[ 36] tok='编程'                 logprob=-0.000366  top=[('编程', -0.000366), ('翻译', -8.625365), ('代码', -8.750365), ('编码', -11.250365), (' coding', -11.375365)]
+[ 37] tok='、'                  logprob=-0.014172  top=[('、', -0.014172), ('等', -4.264172), ('翻译', -11.889173), (' etc', -13.951673), ('辅助', -15.326673)]
+[ 38] tok='翻译'                 logprob=-0.004152  top=[('翻译', -0.004152), ('学习', -5.879151), ('总结', -6.629151), ('分析', -11.629151), ('整理', -12.379151)]
+[ 39] tok='、'                  logprob=-0.225439  top=[('、', -0.225439), ('等', -1.600439), ('总结', -11.225439), ('学习', -12.100439), (' etc', -12.350439)]
+[ 40] tok='总结'                 logprob=-0.124831  top=[('总结', -0.124831), ('学习', -2.249831), ('分析', -4.999831), ('整理', -5.499831), ('头脑', -8.374831)]
+[ 41] tok='等'                  logprob=-0.001269  top=[('等', -0.001269), ('、', -6.751268), ('资料', -9.376268), (' etc', -12.376268), ('文档', -12.501268)]
+[ 42] tok='。'                  logprob=-0.012747  top=[('。', -0.012747), ('，', -4.512747), ('；', -6.387747), ('。\n', -12.387747), ('。\n\n', -12.950247)]
+[ 43] tok='语气'                 logprob=-0.438766  top=[('语气', -0.438766), ('避免', -1.188766), ('保持', -3.688766), ('询问', -5.438766), ('不要', -5.563766)]
+[ 44] tok='友好'                 logprob=-0.001710  top=[('友好', -0.00171), ('自然', -6.50171), (' friendly', -9.37671), ('友善', -9.62671), ('礼貌', -10.50171)]
+[ 45] tok='。'                  logprob=-0.002752  top=[('。', -0.002752), ('，', -6.252752), ('。\n\n', -7.877752), ('。\n', -8.002752), ('。...', -11.127752)]
+[ 46] tok='避免'                 logprob=-0.502885  top=[('避免', -0.502885), ('不要', -1.502885), ('<|close|>', -2.627885), ('不需要', -3.377885), ('由于', -4.502885)]
+[ 47] tok='过度'                 logprob=-0.224871  top=[('过度', -0.224871), ('夸大', -2.474871), ('提及', -3.599871), ('声称', -3.724871), ('透露', -4.099871)]
+[ 48] tok='细节'                 logprob=-0.503374  top=[('细节', -0.503374), ('。', -1.628374), ('详细', -2.628374), ('吹嘘', -3.128374), ('夸大', -3.628374)]
+[ 49] tok='。'                  logprob=-0.000520  top=[('。', -0.00052), ('。\n\n', -8.68802), ('和', -9.12552), ('。\n', -9.18802), ('，', -9.75052)]
+[ 50] tok=' final'             logprob=-1.493225  top=[(' final', -1.493225), ('最终', -1.493225), ('<|close|>', -1.493225), ('可以', -1.993225), ('可', -3.368225)]
+[ 51] tok=' in'                logprob=-0.666356  top=[(' in', -0.666356), (' only', -0.791356), ('用', -4.916356), ('中文', -5.041356), (' ', -5.541356)]
+[ 52] tok=' Chinese'           logprob=-0.000005  top=[(' Chinese', -5e-06), ('Chinese', -13.125005), (' chinese', -13.375005), ('中文', -13.812505), (' ', -15.312505)]
+[ 53] tok='.'                  logprob=-0.001857  top=[('.', -0.001857), ('。', -6.626857), ('.\n', -8.001858), ('.\n\n', -9.064358), ('<|close|>', -11.376858)]
+[ 54] tok='<|close|>'          logprob=-0.056987  top=[('<|close|>', -0.056987), (' ', -3.931987), (' Ensure', -4.181987), (' Need', -4.681987), (' Done', -5.681987)]
+[ 55] tok='think'              logprob= 0.000000  top=[('think', 0.0), ('Think', -18.5), (' think', -18.625), ('thought', -19.375), ('thinking', -19.375)]
+[ 56] tok='<|sep|>'            logprob= 0.000000  top=[('<|sep|>', 0.0), ('<|open|>', -23.25), ('<|close|>', -25.5), ('  \n', -29.6875), ('，', -29.75)]
+[ 57] tok='<|open|>'           logprob= 0.000000  top=[('<|open|>', 0.0), ('<|close|>', -23.3125), ('response', -25.75), ('你好', -26.75), ('<|sep|>', -27.0625)]
+[ 58] tok='response'           logprob=-0.000000  top=[('response', -0.0), (' response', -15.625), ('responses', -16.0), ('Response', -18.0), ('tools', -18.5)]
+[ 59] tok='<|sep|>'            logprob= 0.000000  top=[('<|sep|>', 0.0), ('<|close|>', -31.5), ('你好', -32.8125), ('\n', -34.3125), ('\n\n', -34.875)]
+[ 60] tok='你好'                 logprob=-0.000004  top=[('你好', -4e-06), ('您好', -13.812504), ('大家好', -14.125004), ('我是', -14.812504), ('<|close|>', -14.812504)]
+[ 61] tok='！'                  logprob=-0.002812  top=[('！', -0.002812), ('，', -5.877812), ('呀', -12.127811), ('：', -15.065311), ('～', -15.065311)]
+[ 62] tok='我是'                 logprob=-0.000279  top=[('我是', -0.000279), ('我叫', -8.250278), ('我', -12.250278), ('我是一个', -12.625278), ('我是一名', -13.000278)]
+[ 63] tok=' Kim'               logprob=-0.001785  top=[(' Kim', -0.001785), (' **', -6.376785), ('K', -9.501785), (' kimi', -13.064285), (' Ki', -13.939285)]
+[ 64] tok='i'                  logprob=-0.000000  top=[('i', -0.0), ('，', -14.875), ('ii', -17.0), ('im', -18.0), ('in', -18.5)]
+[ 65] tok='，'                  logprob=-0.000002  top=[('，', -2e-06), ('،', -14.437502), ('（', -15.500002), (' ，', -15.812502), ('。', -16.250002)]
+[ 66] tok='由'                  logprob=-0.000025  top=[('由', -2.5e-05), ('是由', -11.000025), ('一个', -13.125025), ('一款', -13.125025), ('月', -13.437525)]
+[ 67] tok=' Moon'              logprob=-0.002835  top=[(' Moon', -0.002835), ('月', -5.877835), ('Moon', -10.877834), ('月亮', -13.190334), (' Month', -13.190334)]
+[ 68] tok='shot'               logprob=-0.000003  top=[('shot', -3e-06), ('light', -13.750003), ('shine', -14.500003), ('ship', -14.625003), ('set', -15.125003)]
+[ 69] tok=' AI'                logprob=-0.000002  top=[(' AI', -2e-06), ('（', -14.375002), ('AI', -14.437502), (' Al', -14.687502), (' A', -16.875002)]
+[ 70] tok='（'                  logprob=-0.000002  top=[('（', -2e-06), ('「', -13.875002), ('(', -14.125002), ('月', -14.562502), (' ', -15.562502)]
+[ 71] tok='月'                  logprob=-0.000003  top=[('月', -3e-06), ('月亮', -15.062503), ('월', -15.062503), ('也就是', -15.500003), ('月球', -15.812503)]
+[ 72] tok='之'                  logprob=-0.000004  top=[('之', -4e-06), ('暗', -14.687504), ('の', -15.062504), ('·', -15.625004), ('神', -15.875004)]
+[ 73] tok='暗'                  logprob=-0.000001  top=[('暗', -1e-06), ('暗中', -15.562501), ('暗影', -16.000002), ('隐', -16.187502), ('暗暗', -16.187502)]
+[ 74] tok='面'                  logprob=-0.000003  top=[('面', -3e-06), ('点', -14.625003), ('量', -14.750003), ('间', -15.000003), ('月', -15.312503)]
+[ 75] tok='）'                  logprob=-0.000012  top=[('）', -1.2e-05), (')', -11.750011), ('开发的', -13.562511), ('》', -14.187511), ('开发', -14.687511)]
+[ 76] tok='开发的'                logprob=-0.001268  top=[('开发的', -0.001268), ('开发', -6.751268), ('研发的', -10.126268), ('推出的', -10.376268), ('打造的', -11.501268)]
+[ 77] tok=' AI'                logprob=-0.000486  top=[(' AI', -0.000486), ('助手', -8.625485), ('AI', -8.750485), ('智能', -8.875485), ('助理', -13.125485)]
+[ 78] tok=' '                  logprob=-0.000053  top=[(' ', -5.3e-05), ('.', -12.437553), (' of', -13.281303), (' to', -13.968803), (',', -14.031303)]
+[ 79] tok='助手'                 logprob=-0.000043  top=[('助手', -4.3e-05), ('助理', -10.125043), (' assistant', -13.125043), ('assistant', -14.500043), ('助', -15.125043)]
+[ 80] tok='。'                  logprob=-0.001176  top=[('。', -0.001176), ('。\n\n', -6.751176), ('，', -12.938676), ('。\n', -13.813676), ('我可以', -15.438676)]
+[ 81] tok='我可以'                logprob=-0.019312  top=[('我可以', -0.019312), ('  \n', -4.144312), ('我', -6.894312), ('可以', -7.019312), ('  \n\n', -7.394312)]
+[ 82] tok='帮你'                 logprob=-0.005596  top=[('帮你', -0.005596), ('帮助你', -5.255596), ('陪你', -8.505596), ('帮忙', -9.005596), ('帮助', -10.880596)]
+[ 83] tok='回答问题'               logprob=-0.194602  top=[('回答问题', -0.194602), ('问答', -2.319602), ('解答', -2.694602), ('答疑解惑', -5.569602), ('答疑', -5.694602)]
+[ 84] tok='、'                  logprob=-0.000001  top=[('、', -1e-06), ('写作', -14.500001), ('，', -15.437501), ('写', -15.750001), ('写文章', -16.437502)]
+[ 85] tok='写作'                 logprob=-0.241018  top=[('写作', -0.241018), ('整理', -1.991018), ('写', -2.741018), ('写文章', -4.491018), ('撰写', -7.491018)]
+[ 86] tok='与'                  logprob=-0.264249  top=[('与', -0.264249), ('润', -1.764248), ('、', -3.264249), ('/', -4.639248), ('改写', -5.139248)]
+[ 87] tok='润'                  logprob=-0.012725  top=[('润', -0.012725), ('改', -5.137725), ('改写', -5.137725), ('修改', -7.012725), ('编辑', -15.012725)]
+[ 88] tok='色'                  logprob=-0.000022  top=[('色', -2.2e-05), ('饰', -11.125022), ('稿', -12.125022), ('笔', -14.250022), ('文', -15.000022)]
+[ 89] tok='、'                  logprob=-0.000003  top=[('、', -3e-06), ('代码', -14.562503), ('文本', -14.562503), ('文案', -14.937503), ('文档', -16.125002)]
+[ 90] tok='翻译'                 logprob=-0.328811  top=[('翻译', -0.328811), ('编程', -1.703811), ('总结', -2.328811), ('整理', -7.953811), ('做', -8.578811)]
+[ 91] tok='、'                  logprob=-0.000051  top=[('、', -5.1e-05), ('总结', -10.125051), ('与', -11.750051), ('和', -14.125051), ('解释', -14.937551)]
+[ 92] tok='总结'                 logprob=-0.000496  top=[('总结', -0.000496), ('整理', -8.000496), ('编程', -9.625496), (' summarize', -10.625496), ('做', -10.750496)]
+[ 93] tok='资料'                 logprob=-0.078931  top=[('资料', -0.078931), ('文档', -2.578931), ('文献', -10.828932), ('材料', -11.203932), ('内容', -12.953932)]
+[ 94] tok='、'                  logprob=-0.000005  top=[('、', -5e-06), ('编程', -14.312505), ('，', -14.437505), (' brainstorm', -14.750005), (' brainstorming', -15.062505)]
+[ 95] tok='编程'                 logprob=-0.308663  top=[('编程', -0.308663), ('整理', -2.933663), ('辅助', -3.308663), ('梳理', -3.433663), ('分析', -3.683663)]
+[ 96] tok='调试'                 logprob=-0.013763  top=[('调试', -0.013763), (' debug', -5.138763), (' Debug', -6.013763), ('debug', -6.388763), ('排', -6.763763)]
+[ 97] tok='、'                  logprob=-0.000027  top=[('、', -2.7e-05), ('，', -11.250027), ('头脑', -12.812527), (' brainstorm', -13.437527), (' brainstorming', -13.687527)]
+[ 98] tok='整理'                 logprob=-0.464184  top=[('整理', -0.464184), ('梳理', -1.839184), ('头脑', -1.964184), (' brainstorm', -3.339184), ('分析', -4.339184)]
+[ 99] tok='思路'                 logprob=-0.034199  top=[('思路', -0.034199), ('思路和', -3.409199), ('方案', -7.909199), ('表格', -9.659199), ('计划', -10.159199)]
+[100] tok='等'                  logprob=-0.034934  top=[('等', -0.034934), ('、', -3.784934), ('和学习', -4.534935), ('和分析', -7.659935), ('，', -8.034934)]
+[101] tok='。'                  logprob=-0.000057  top=[('。', -5.7e-05), ('。\n\n', -9.937557), ('；', -13.062557), ('。**', -13.250057), ('，', -13.875057)]
+[102] tok='你可以'                logprob=-0.786567  top=[('你可以', -0.786567), ('有什么', -1.661567), ('告诉我', -2.036567), ('你有什么', -2.286567), ('请', -2.786567)]
+[103] tok='直接用'                logprob=-0.097305  top=[('直接用', -0.097305), ('直接', -2.972305), ('用', -3.222305), ('直接把', -7.472305), ('直接使用', -7.597305)]
+[104] tok='中文'                 logprob=-0.000064  top=[('中文', -6.4e-05), ('自然', -9.750064), ('中英文', -13.000064), ('告诉我', -13.875064), ('日常', -14.937564)]
+[105] tok='告诉我'                logprob=-0.571857  top=[('告诉我', -0.571857), ('或', -0.946857), ('和我', -3.071857), ('跟我', -8.071856), ('和我说', -8.071856)]
+[106] tok='需求'                 logprob=-0.642156  top=[('需求', -0.642156), ('你的', -0.767156), ('需要', -5.642156), ('你想', -5.642156), ('你需要', -6.267156)]
+[107] tok='，'                  logprob=-0.020650  top=[('，', -0.02065), ('。', -3.89565), ('～', -9.52065), ('即可', -11.39565), (' 🙂', -12.14565)]
+[108] tok='我会'                 logprob=-0.000438  top=[('我会', -0.000438), ('我们一起', -8.500438), ('我来', -9.125438), ('我们会', -9.875438), ('我会在', -10.375438)]
+[109] tok='尽量'                 logprob=-0.348469  top=[('尽量', -0.348469), ('尽力', -1.223469), ('尽快', -10.973469), ('尽量选择', -12.598469), ('尽量不', -12.973469)]
+[110] tok='清晰'                 logprob=-0.315197  top=[('清晰', -0.315197), ('简洁', -1.565197), ('清楚', -2.815197), ('给出', -7.190197), ('简明', -7.690197)]
+[111] tok='、'                  logprob=-0.000015  top=[('、', -1.5e-05), ('高效', -11.625014), ('简洁', -13.125014), ('实用', -13.500014), ('准确地', -13.500014)]
+[112] tok='准确地'                logprob=-0.591967  top=[('准确地', -0.591967), ('实用', -1.216967), ('高效', -2.591967), ('简洁', -2.716967), ('实用的', -5.966967)]
+[113] tok='协助'                 logprob=-0.041512  top=[('协助', -0.041512), ('帮你', -4.166512), ('帮助你', -4.666512), ('帮忙', -4.916512), ('帮', -5.166512)]
+[114] tok='你'                  logprob=-0.000028  top=[('你', -2.8e-05), ('。', -10.500028), (' you', -15.625028), ('您', -17.750027), ('你的', -19.437527)]
+[115] tok='。'                  logprob=-0.000002  top=[('。', -2e-06), ('<|close|>', -13.562502), ('。\n\n', -15.062502), ('。\n', -15.312502), ('～', -15.625002)]
+[116] tok='<|close|>'          logprob=-0.000030  top=[('<|close|>', -3e-05), ('有什么', -10.500031), ('  \n', -14.125031), ('你想', -14.500031), ('现在', -14.812531)]
+[117] tok='response'           logprob= 0.000000  top=[('response', 0.0), (' response', -16.875), ('\tresponse', -19.625), ('responses', -19.875), ('respond', -20.125)]
+[118] tok='<|sep|>'            logprob= 0.000000  top=[('<|sep|>', 0.0), ('<|close|>', -28.25), ('，', -36.625), (' ', -37.5625), ('<|end_of_msg|>', -37.5625)]
+[119] tok='<|close|>'          logprob= 0.000000  top=[('<|close|>', 0.0), ('<|end_of_msg|>', -18.8125), ('<|open|>', -19.0), ('<|sep|>', -19.5), (' message', -19.75)]
+[120] tok='message'            logprob= 0.000000  top=[('message', 0.0), (' message', -19.875), ('Message', -20.25), ('_message', -21.375), ('msg', -21.5)]
+[121] tok='<|sep|>'            logprob= 0.000000  top=[('<|sep|>', 0.0), ('<|end_of_msg|>', -29.25), (' message', -33.4375), ('[EOS]', -34.375), ('message', -34.8125)]
+[122] tok='<|end_of_msg|>'     logprob= 0.000000  top=[('<|end_of_msg|>', 0.0), ('<|open|>', -31.625), ('message', -32.6875), ('<|close|>', -34.8125), (' message', -35.375)]
+```
+
+## 6. 跑通后的 curl 二次验证 (08-23)
+
+在 leg=baseline_pp1_nodspark 抓完 logprob 后，再发 2 个独立 curl 确认服务真的健康：
+
+**简单 chat (无 logprob, 1+1)**：
+```json
+{
+  "finish_reason": "stop",
+  "content": "1 + 1 = **2**",
+  "reasoning_content": "Simple.",
+  "usage": {"prompt_tokens": 90, "total_tokens": 113, "completion_tokens": 23, "reasoning_tokens": 5}
+}
+```
+
+**带 logprob 的 chat (hi)**：
+```json
+{
+  "finish_reason": "length",
+  "logprobs": true,
+  "content": "Hi there! How can I help",
+  "reasoning_content": "Simple greeting."
+}
+```
+
+**结论**：
+- ✅ health=200，chat 200 OK
+- ✅ 内容正确（"1+1=2"、正常英文 greeting）
+- ✅ logprobs=true 成功返回（dspark off 是前提）
+- ✅ reasoning_content 正常（K3 自己的 reasoning 链路 work）
+- ✅ **0 IndexPut / 0 K=48 / 0 TBE 错误** (4 台 log 全干净)
+
+这次 leg 是**第一个干净的 PR-on + dspark-off + PP=1 + deepep + NEW_FIX wheel 数据点**。后续需要：
+
+1. 跑 `newbase` (PP=4, dspark off) 拿 leg2 → 验证 PR #34735 的 PP 路径精度
+2. 跑 `community` (PR-off) baseline_pp1_nodspark → 验证 PR #34735 vs community 差异
+3. 三者 logprob diff 看 PP 路径有没有 bug
+
+### 6.1 完整测试环境记录
+
+**镜像 / 容器 (4 台一致)**:
+| 字段 | 值 |
+|---|---|
+| Docker 镜像 | `<PRIVATE_IMAGE>` |
+| 容器名 | `<CONTAINER>` |
+| 4 台 IP | `<NODE_A>` (rank 0) / `<NODE_B>` (rank 1) / `<NODE_C>` (rank 2) / `<NODE_D>` (rank 3) |
+| 容器网络 | `--network host` |
+| Python | `/usr/local/python3.11.15/bin/python3` |
+| CANN | `/usr/local/Ascend/cann-9.0.0` (cann-9.0.0-a3) |
+| torch_npu | 容器自带 |
+
+**代码版本 (personal fork, 4 台一致)**:
+| 仓库 | 分支 | HEAD commit | 备注 |
+|---|---|---|---|
+| `personal/sglang` | `k3-pp` | `35b551f08 simplify implementation for npu mla, one for lateng kv and one for rope key is fixed, so static is fine` | PR #34735 (4 commits: PD 分离相关) |
+| `personal/sgl-kernel-npu` | `k3-pp` | `53e3543 fix(deepep): fix notify dispatch UB overflow for multi-round >512 experts` | PR #715 (DeepEP >512) + 7 K3 Triton kernel commits |
+| `sgl-kernel-npu` (commit `feca6c9`) | `k3-pp` | `fix(mamba): preserve convolution state dtype` | ✅ **dtype fix (NEW_FIX)** 已 build wheel 装 4 台 |
+
+**K3 模型权重 (4 台挂载共享)**:
+| 路径 | 用途 | 文件大小 (config.json) |
+|---|---|---|
+| `<MODEL_PATH>` | K3 W4A8 target model | 5884 B (8-18 10:34) |
+| `<MODEL_PATH>` | DSpark draft model | 1352 B (8-17 16:41) |
+
+**启动 / 测试脚本 (4 台 md5)**:
+| 脚本 | 4 台 md5 | 用途 | 同步状态 |
+|---|---|---|---|
+| `K3/baseline_pp1_nodspark.sh` | `effd256cbc85022e1ee9803f7af95dd2` | PP=1, dspark off, deepep on | ✅ 一致 |
+| `K3/newbase.sh` | `c0f451daa8f1a0b38019f847f7028d83` (<NODE_A>) / `d3c73a6d14fdb95de433b22ce72564d9` (其他 3 台) | PP=4, dspark off | ⚠️ **不一致** (其他 3 台缺 deepep 一行) |
+| `K3/grab_logprob.sh` | `d260b05dc0e15d1895c6dda2341b03cf` | 抓 logprob (temperature=0, logprobs=true, top_logprobs=5) | ✅ 一致 |
+| `K3/kill_sglang.sh` | `60f21c7ffa15c52d82fbd492837bf3aa` | 杀 sglang 进程组 + 清 /dev/shm | ✅ 一致 |
+
+**`baseline_pp1_nodspark.sh` 关键参数 (PP=1, dspark off, deepep on)**:
+```
+--model-path <MODEL_PATH>
+--tp-size 64 --enable-dp-attention --dp-size 4
+--mem-fraction-static 0.72
+--chunked-prefill-size 8192
+--cuda-graph-backend-decode=disabled          # ← 绕 cuda graph init 时的 K=48
+--reasoning-parser kimi_k3
+--moe-a2a-backend deepep --deepep-mode auto    # ← 绕 K=48 GMM
+--disable-radix-cache --disable-custom-all-reduce
+--port 30543
+```
+
+**启动方式 (用 setsid 真 detach)**:
+```bash
+ssh -f <USER>@$ip \
+  "cd /home/<USER>/K3 && \
+   setsid nohup bash baseline_pp1_nodspark.sh </dev/null >/tmp/nohup_pp1nd.out 2>&1 & disown -h"
+```
+
+**测试方式**:
+```bash
+# 1) health check
+curl -s -o /dev/null -w "%{http_code}" http://localhost:30543/health
+
+# 2) 抓 logprob
+cd /home/<USER>/K3
+MODEL=<MODEL_PATH> PORT=30543 bash grab_logprob.sh <leg_name>
+```
+
+**leg=`baseline_pp1_nodspark` 抓到的 prompt** (来自 grab_logprob.sh):
+```
+{"model":"<MODEL_PATH>","reasoning_effort":"low",
+ "messages":[{"role":"user","content":"你好，请介绍你自己"}],
+ "max_tokens":256,"stream":false,"temperature":0,
+ "logprobs":true,"top_logprobs":5}
+```
+
+**Log 文件命名** (per-rank):
+- `88_pp1_nodspark_0.log` / `_1.log` / `_2.log` / `_3.log`
+
+**其他**:
+- 端口: HTTP 30543, dist-init 30143
+- 节点间通信: enp196s0f0 (HCCL/GLOO socket)
+- `STREAMS_PER_DEVICE=32` 加速
+- `HCCL_BUFFSIZE=2000`, `HCCL_OP_EXPANSION_MODE=AIV`
+- `PYTORCH_NPU_ALLOC_CONF=expandable_segments:True`
+- `SGLANG_NPU_USE_TRITON_PREFIX_KV_CACHE_STORE=1`
+- 4 台都验证 NEW_FIX wheel (`sgl_kernel_npu.mamba.causal_conv1d` md5 `ccaf1c88…`)
+
+
+
+[ARCHIVE_SEGMENT_END]

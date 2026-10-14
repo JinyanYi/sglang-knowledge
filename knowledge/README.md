@@ -31,10 +31,17 @@
 
 ## models —— 模型与架构
 
+K3 跨主题内容从 [项目入口](../projects/kimi-k3/README.md) 找；架构正文仍保留在本目录，实验时间线不混入原理页。
+
+**GDN/SSM 学习笔记**：[Qwen3.6 的状态、投影与 shape](./models/qwen3-6-gdn-state-and-shapes.md)。记录 2026-10-13 的逐步学习、正确回答摘录与明天的接续点；从 q/k/v、TP 分片、conv/temporal 状态读到 PR #43845。
+
+后续目标：[Qwen GDN 完整算法](./models/qwen3-6-gdn-algorithm.md)；原始资料：[GDN、KDA 与 Kimi K3 的论文阅读顺序及本地 PDF](./models/papers/README.md)。
+
 | 文档 | 内容 |
 |---|---|
 | [kimi-k3-latent-moe-ep.md](./models/kimi-k3-latent-moe-ep.md) | K3 latent MoE + EP 架构分析 |
 | [kimi-k3-layer-structure.md](./models/kimi-k3-layer-structure.md) | K3 层结构（93 层 / KDA×3+MLA×1 / `attn_res_block_size=12`）、PP 代码就绪度、为什么首版必须关 spec 等 |
+| [kimi-k3-dspark-pp-pd.md](./models/kimi-k3-dspark-pp-pd.md) | K3 DSpark prompt draft KV、PP stage 所有权、partial-load 显存收益、PD pointer 映射与 DeepEP 语义 |
 | [qwen3-8-day0-pr34585.md](./models/qwen3-8-day0-pr34585.md) | Qwen3.8 模型创新点 + #34585 适配全景 |
 | [multimodal-end-to-end-flow.md](./models/multimodal-end-to-end-flow.md) | 多模态请求端到端链路（Qwen3.6-35B-A3B） |
 
