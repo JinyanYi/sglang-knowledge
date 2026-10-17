@@ -43,6 +43,19 @@ $$
 
 W 是训练得到的模型权重。上式按数学含义展开；源码把多组投影合并执行，以减少 kernel 调用。`in_proj_qkvz` 合并 q/k/v/z，`in_proj_ba` 合并 b/a。
 
+这里先区分全模型的 head 数与每个 TP rank 的本地 head 数。本次 GDN 层全局有 16 个 q heads、16 个 k heads 和 32 个 value heads；TP2 表示 TP world size 为 2，heads 按 TP 分片：
+
+$$
+\begin{aligned}
+H_q^{\mathrm{local}}=H_k^{\mathrm{local}}
+&=\frac{16}{\mathrm{TP\ world\ size}}=\frac{16}{2}=8,\\
+H_v^{\mathrm{local}}
+&=\frac{32}{\mathrm{TP\ world\ size}}=\frac{32}{2}=16.
+\end{aligned}
+$$
+
+每个 head 的维度仍为 128，TP 分掉的是 head 数。因此下面 q/k 的 8 来自全局 16 heads 除以 TP world size，而 v 的 16 来自全局 32 value heads 除以 TP world size。z 与 value heads 对齐；a/b 为每个本地 value head 各提供一个标量，所以它们的 head 轴也都是 16。
+
 TP2 下，一个 rank、一个 token 的拆分结果为：
 
 ```text

@@ -18,6 +18,7 @@
 | 文档 | 内容 |
 |---|---|
 | [prefill-decode.md](./inference/prefill-decode.md) | 两阶段计算特性、Arithmetic Intensity、为什么需要 PD 分离 |
+| [chunked-pipeline-parallelism.md](./inference/chunked-pipeline-parallelism.md) | Chunked PP 阅读笔记：TP / CP 通信、PCP / DCP、dynamic chunking 公式与 smooth factor |
 | [cuda-graphs.md](./inference/cuda-graphs.md) | CUDA Graph、Piecewise CUDA Graph 与 SGLang 实现 |
 | [speculative-decoding.md](./inference/speculative-decoding.md) | N-gram / EAGLE / EAGLE-3 / DFlash 原理对比与使用 |
 | [multi-token-prediction.md](./inference/multi-token-prediction.md) | MTP 训练方式、加速原理、SGLang 实现 |
